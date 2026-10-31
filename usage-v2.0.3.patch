@@ -1,0 +1,1944 @@
+diff --git a/.github/workflows/binary-dev-release.yml b/.github/workflows/binary-dev-release.yml
+index 8995e28..82914fa 100644
+--- a/.github/workflows/binary-dev-release.yml
++++ b/.github/workflows/binary-dev-release.yml
+@@ -64,11 +64,9 @@ jobs:
+         include:
+           - goos: linux
+             goarch: amd64
+-            cc: gcc
+             asset_arch: amd64
+           - goos: linux
+             goarch: arm64
+-            cc: aarch64-linux-gnu-gcc
+             asset_arch: arm64
+     steps:
+       - name: Checkout repository
+@@ -89,9 +87,6 @@ jobs:
+           cache: npm
+           cache-dependency-path: web/package-lock.json
+ 
+-      - name: Install build dependencies
+-        run: sudo apt-get update && sudo apt-get install -y build-essential gcc-aarch64-linux-gnu
+-
+       - name: Install frontend dependencies
+         run: npm --prefix ./web ci
+ 
+@@ -103,7 +98,6 @@ jobs:
+           PACKAGE_SUFFIX: ${{ needs.resolve-dev-name.outputs.specific_name }}
+           GOOS: ${{ matrix.goos }}
+           GOARCH: ${{ matrix.goarch }}
+-          CC: ${{ matrix.cc }}
+           ASSET_ARCH: ${{ matrix.asset_arch }}
+         run: |
+           set -euo pipefail
+@@ -111,7 +105,7 @@ jobs:
+           package_dir="dist/${package_name}"
+           mkdir -p "${package_dir}/data"
+ 
+-          CGO_ENABLED=1 GOOS="${GOOS}" GOARCH="${GOARCH}" CC="${CC}" \
++          CGO_ENABLED=0 GOOS="${GOOS}" GOARCH="${GOARCH}" \
+             go build -trimpath -ldflags="-s -w" -o "${package_dir}/cpa-usage-keeper" ./cmd/server/main.go
+           cp .env.example README.md README.zh.md LICENSE "${package_dir}/"
+           cp -R docs "${package_dir}/"
+@@ -177,7 +171,7 @@ jobs:
+           package_dir="dist/${package_name}"
+           mkdir -p "${package_dir}/data"
+ 
+-          CGO_ENABLED=1 GOOS="${GOOS}" GOARCH="${GOARCH}" \
++          CGO_ENABLED=0 GOOS="${GOOS}" GOARCH="${GOARCH}" \
+             go build -trimpath -ldflags="-s -w" -o "${package_dir}/cpa-usage-keeper" ./cmd/server/main.go
+           cp .env.example README.md README.zh.md LICENSE "${package_dir}/"
+           cp -R docs "${package_dir}/"
+@@ -201,14 +195,10 @@ jobs:
+             asset_arch: amd64
+             runs_on: windows-2025
+             msystem: UCRT64
+-            install: mingw-w64-ucrt-x86_64-gcc
+-            cc: gcc
+           - goarch: arm64
+             asset_arch: arm64
+             runs_on: windows-11-arm
+             msystem: CLANGARM64
+-            install: mingw-w64-clang-aarch64-gcc
+-            cc: gcc
+     steps:
+       - name: Checkout repository
+         uses: actions/checkout@v6
+@@ -234,7 +224,6 @@ jobs:
+           msystem: ${{ matrix.msystem }}
+           update: true
+           path-type: inherit
+-          install: ${{ matrix.install }}
+ 
+       - name: Install frontend dependencies
+         shell: bash
+@@ -251,14 +240,13 @@ jobs:
+           GOOS: windows
+           GOARCH: ${{ matrix.goarch }}
+           ASSET_ARCH: ${{ matrix.asset_arch }}
+-          CC: ${{ matrix.cc }}
+         run: |
+           set -euo pipefail
+           package_name="cpa-usage-keeper_dev_${PACKAGE_SUFFIX}_${GITHUB_SHA::7}_${GOOS}_${ASSET_ARCH}"
+           package_dir="dist/${package_name}"
+           mkdir -p "${package_dir}/data"
+ 
+-          CGO_ENABLED=1 GOOS="${GOOS}" GOARCH="${GOARCH}" CC="${CC}" \
++          CGO_ENABLED=0 GOOS="${GOOS}" GOARCH="${GOARCH}" \
+             go build -trimpath -ldflags="-s -w" -o "${package_dir}/cpa-usage-keeper.exe" ./cmd/server/main.go
+           cp .env.example README.md README.zh.md LICENSE "${package_dir}/"
+           cp -R docs "${package_dir}/"
+diff --git a/.github/workflows/binary-release.yml b/.github/workflows/binary-release.yml
+index 74b2b1e..c02a6c1 100644
+--- a/.github/workflows/binary-release.yml
++++ b/.github/workflows/binary-release.yml
+@@ -24,11 +24,9 @@ jobs:
+         include:
+           - goos: linux
+             goarch: amd64
+-            cc: gcc
+             asset_arch: amd64
+           - goos: linux
+             goarch: arm64
+-            cc: aarch64-linux-gnu-gcc
+             asset_arch: arm64
+     steps:
+       - name: Checkout repository
+@@ -49,9 +47,6 @@ jobs:
+           cache: npm
+           cache-dependency-path: web/package-lock.json
+ 
+-      - name: Install build dependencies
+-        run: sudo apt-get update && sudo apt-get install -y build-essential gcc-aarch64-linux-gnu
+-
+       - name: Install frontend dependencies
+         run: npm --prefix ./web ci
+ 
+@@ -63,7 +58,6 @@ jobs:
+           VERSION: ${{ github.ref_name }}
+           GOOS: ${{ matrix.goos }}
+           GOARCH: ${{ matrix.goarch }}
+-          CC: ${{ matrix.cc }}
+           ASSET_ARCH: ${{ matrix.asset_arch }}
+         run: |
+           set -euo pipefail
+@@ -71,7 +65,7 @@ jobs:
+           package_dir="dist/${package_name}"
+           mkdir -p "${package_dir}/data"
+ 
+-          CGO_ENABLED=1 GOOS="${GOOS}" GOARCH="${GOARCH}" CC="${CC}" \
++          CGO_ENABLED=0 GOOS="${GOOS}" GOARCH="${GOARCH}" \
+             go build -trimpath -ldflags="-s -w -X cpa-usage-keeper/internal/version.Version=${VERSION}" -o "${package_dir}/cpa-usage-keeper" ./cmd/server/main.go
+           cp .env.example README.md README.zh.md LICENSE "${package_dir}/"
+           cp -R docs "${package_dir}/"
+@@ -137,7 +131,7 @@ jobs:
+           package_dir="dist/${package_name}"
+           mkdir -p "${package_dir}/data"
+ 
+-          CGO_ENABLED=1 GOOS="${GOOS}" GOARCH="${GOARCH}" \
++          CGO_ENABLED=0 GOOS="${GOOS}" GOARCH="${GOARCH}" \
+             go build -trimpath -ldflags="-s -w -X cpa-usage-keeper/internal/version.Version=${VERSION}" -o "${package_dir}/cpa-usage-keeper" ./cmd/server/main.go
+           cp .env.example README.md README.zh.md LICENSE "${package_dir}/"
+           cp -R docs "${package_dir}/"
+@@ -161,14 +155,10 @@ jobs:
+             asset_arch: amd64
+             runs_on: windows-2025
+             msystem: UCRT64
+-            install: mingw-w64-ucrt-x86_64-gcc
+-            cc: gcc
+           - goarch: arm64
+             asset_arch: arm64
+             runs_on: windows-11-arm
+             msystem: CLANGARM64
+-            install: mingw-w64-clang-aarch64-gcc
+-            cc: gcc
+     steps:
+       - name: Checkout repository
+         uses: actions/checkout@v6
+@@ -194,7 +184,6 @@ jobs:
+           msystem: ${{ matrix.msystem }}
+           update: true
+           path-type: inherit
+-          install: ${{ matrix.install }}
+ 
+       - name: Install frontend dependencies
+         shell: bash
+@@ -211,14 +200,13 @@ jobs:
+           GOOS: windows
+           GOARCH: ${{ matrix.goarch }}
+           ASSET_ARCH: ${{ matrix.asset_arch }}
+-          CC: ${{ matrix.cc }}
+         run: |
+           set -euo pipefail
+           package_name="cpa-usage-keeper_${VERSION}_${GOOS}_${ASSET_ARCH}"
+           package_dir="dist/${package_name}"
+           mkdir -p "${package_dir}/data"
+ 
+-          CGO_ENABLED=1 GOOS="${GOOS}" GOARCH="${GOARCH}" CC="${CC}" \
++          CGO_ENABLED=0 GOOS="${GOOS}" GOARCH="${GOARCH}" \
+             go build -trimpath -ldflags="-s -w -X cpa-usage-keeper/internal/version.Version=${VERSION}" -o "${package_dir}/cpa-usage-keeper.exe" ./cmd/server/main.go
+           cp .env.example README.md README.zh.md LICENSE "${package_dir}/"
+           cp -R docs "${package_dir}/"
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index a469dec..35ff4df 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -105,6 +105,8 @@ jobs:
+     if: ${{ needs.changes.outputs.backend == 'true' || needs.changes.outputs.other == 'true' }}
+     runs-on: ${{ matrix.runs-on }}
+     timeout-minutes: 20
++    env:
++      CGO_ENABLED: 0
+     strategy:
+       fail-fast: false
+       matrix:
+@@ -131,7 +133,6 @@ jobs:
+           update: false
+           cache: true
+           path-type: inherit
+-          install: mingw-w64-ucrt-x86_64-gcc
+ 
+       - name: Run backend tests
+         if: ${{ runner.os != 'Windows' }}
+diff --git a/Dockerfile b/Dockerfile
+index a1ea010..e8dbc64 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -12,7 +12,6 @@ RUN npm run build
+ 
+ FROM ${GO_IMAGE} AS go-builder
+ WORKDIR /app
+-RUN apk add --no-cache build-base
+ COPY go.mod go.sum ./
+ RUN go mod download
+ COPY cmd/ ./cmd/
+@@ -20,7 +19,7 @@ COPY internal/ ./internal/
+ COPY --from=web-builder /app/web/dist ./web/dist
+ COPY web/static.go ./web/static.go
+ ARG VERSION=dev
+-RUN CGO_ENABLED=1 GOOS=linux go build \
++RUN CGO_ENABLED=0 GOOS=linux go build \
+     -ldflags="-s -w -X cpa-usage-keeper/internal/version.Version=${VERSION}" \
+     -o /out/cpa-usage-keeper ./cmd/server/main.go
+ 
+diff --git a/go.mod b/go.mod
+index bac0ce1..b426b14 100644
+--- a/go.mod
++++ b/go.mod
+@@ -9,10 +9,11 @@ require (
+ 	github.com/mattn/go-sqlite3 v1.14.48
+ 	github.com/sirupsen/logrus v1.9.3
+ 	golang.org/x/oauth2 v0.37.0
+-	golang.org/x/sys v0.20.0
++	golang.org/x/sys v0.49.0
+ 	gorm.io/driver/sqlite v1.5.7
+ 	gorm.io/gorm v1.26.1
+ 	gorm.io/plugin/dbresolver v1.6.0
++	modernc.org/sqlite v1.61.0
+ )
+ 
+ require (
+@@ -20,6 +21,7 @@ require (
+ 	github.com/bytedance/sonic/loader v0.1.1 // indirect
+ 	github.com/cloudwego/base64x v0.1.4 // indirect
+ 	github.com/cloudwego/iasm v0.2.0 // indirect
++	github.com/dustin/go-humanize v1.1.0 // indirect
+ 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
+ 	github.com/gin-contrib/sse v0.1.0 // indirect
+ 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
+@@ -27,15 +29,18 @@ require (
+ 	github.com/go-playground/universal-translator v0.18.1 // indirect
+ 	github.com/go-playground/validator/v10 v10.20.0 // indirect
+ 	github.com/goccy/go-json v0.10.2 // indirect
++	github.com/google/uuid v1.6.0 // indirect
+ 	github.com/jinzhu/inflection v1.0.0 // indirect
+ 	github.com/jinzhu/now v1.1.5 // indirect
+ 	github.com/json-iterator/go v1.1.12 // indirect
+ 	github.com/klauspost/cpuid/v2 v2.2.7 // indirect
+ 	github.com/leodido/go-urn v1.4.0 // indirect
+-	github.com/mattn/go-isatty v0.0.20 // indirect
++	github.com/mattn/go-isatty v0.0.24 // indirect
+ 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
+ 	github.com/modern-go/reflect2 v1.0.2 // indirect
++	github.com/ncruces/go-strftime v1.1.0 // indirect
+ 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
++	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+ 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
+ 	github.com/ugorji/go/codec v1.2.12 // indirect
+ 	golang.org/x/arch v0.8.0 // indirect
+@@ -44,4 +49,7 @@ require (
+ 	golang.org/x/text v0.20.0 // indirect
+ 	google.golang.org/protobuf v1.34.1 // indirect
+ 	gopkg.in/yaml.v3 v3.0.1 // indirect
++	modernc.org/libc v1.79.0 // indirect
++	modernc.org/mathutil v1.7.1 // indirect
++	modernc.org/memory v1.12.1 // indirect
+ )
+diff --git a/go.sum b/go.sum
+index a94ee35..8593d29 100644
+--- a/go.sum
++++ b/go.sum
+@@ -11,6 +11,8 @@ github.com/coreos/go-oidc/v3 v3.21.0/go.mod h1:DYCf24+ncYi+XkIH97GY1+dqoRlbaSI26
+ github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
+ github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
++github.com/dustin/go-humanize v1.1.0 h1:dbKTrvD0klcbBV/h4AWJdMuZogJACoMlvWIWZ5b2xWg=
++github.com/dustin/go-humanize v1.1.0/go.mod h1:hc1CvRkJMsgxqjmjMQF3QNRAZBwY8AXBAzKYoSX9sFI=
+ github.com/gabriel-vasile/mimetype v1.4.3 h1:in2uUcidCuFcDKtdcBxlR0rJ1+fsokWf+uqxgUFjbI0=
+ github.com/gabriel-vasile/mimetype v1.4.3/go.mod h1:d8uq/6HKRL6CGdk+aubisF/M5GcPfT7nKyLpA0lbSSk=
+ github.com/gin-contrib/sse v0.1.0 h1:Y/yl/+YNO8GZSjAhjMsSuLt29uWRFHdHYUb5lYOV9qE=
+@@ -34,6 +36,12 @@ github.com/goccy/go-json v0.10.2/go.mod h1:6MelG93GURQebXPDq3khkgXZkazVtN9CRI+MG
+ github.com/google/go-cmp v0.5.5 h1:Khx7svrCpmxxtHBq5j2mp/xVjsi8hQMfNLvJFAlrGgU=
+ github.com/google/go-cmp v0.5.5/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
+ github.com/google/gofuzz v1.0.0/go.mod h1:dBl0BpW6vV/+mYPU4Po3pmUjxk6FQPldtuIdl/M65Eg=
++github.com/google/pprof v0.0.0-20261016150608-1facf8f91b50 h1:PlNWJRxu5APSV0pWqfIsZ0qt9OOGHSWfZQ4zvx+WgWs=
++github.com/google/pprof v0.0.0-20261016150608-1facf8f91b50/go.mod h1:yUo1AMMpsPIDFGuwDK8nLcf8+vvAd5l2O6JDZ6hpwrM=
++github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
++github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
++github.com/hashicorp/golang-lru/v2 v2.0.7 h1:a+bsQ5rvGLjzHuww6tVxozPZFVghXaHOwFs4luLUK2k=
++github.com/hashicorp/golang-lru/v2 v2.0.7/go.mod h1:QeFd9opnmA6QUJc5vARoKUSoFhyfM2/ZepoAG6RGpeM=
+ github.com/jinzhu/inflection v1.0.0 h1:K317FqzuhWc8YvSVlFMCCUb36O/S9MCKRDI7QkRKD/E=
+ github.com/jinzhu/inflection v1.0.0/go.mod h1:h+uFLlag+Qp1Va5pdKtLDYj+kHp5pxUVkryuEj+Srlc=
+ github.com/jinzhu/now v1.1.5 h1:/o9tlHleP7gOFmsnYNz3RGnqzefHA47wQpKrrdTIwXQ=
+@@ -48,8 +56,8 @@ github.com/klauspost/cpuid/v2 v2.2.7/go.mod h1:Lcz8mBdAVJIBVzewtcLocK12l3Y+JytZY
+ github.com/knz/go-libedit v1.10.1/go.mod h1:MZTVkCWyz0oBc7JOWP3wNAzd002ZbM/5hgShxwh4x8M=
+ github.com/leodido/go-urn v1.4.0 h1:WT9HwE9SGECu3lg4d/dIA+jxlljEa1/ffXKmRjqdmIQ=
+ github.com/leodido/go-urn v1.4.0/go.mod h1:bvxc+MVxLKB4z00jd1z+Dvzr47oO32F/QSNjSBOlFxI=
+-github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=
+-github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
++github.com/mattn/go-isatty v0.0.24 h1:tGZZoVgT/KiqK1c8ocVLeDS8BSWMRd47J3Lbz7vsReI=
++github.com/mattn/go-isatty v0.0.24/go.mod h1:nMCL3Zebbrt45jsMDgnfIwz6ydEQApk5oEI3HqDio6A=
+ github.com/mattn/go-sqlite3 v1.14.48 h1:7XHIgl0a8HwOaiK4E47ozLkST78rR9+OtNGx27D/TFs=
+ github.com/mattn/go-sqlite3 v1.14.48/go.mod h1:6JTjA44L93a0QCyJef5YvlPoKXntQPjzWv5gtm9sB6w=
+ github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
+@@ -57,10 +65,14 @@ github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd h1:TRLaZ9cD/w
+ github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
+ github.com/modern-go/reflect2 v1.0.2 h1:xBagoLtFs94CBntxluKeaWgTMpvLxC4ur3nMaC9Gz0M=
+ github.com/modern-go/reflect2 v1.0.2/go.mod h1:yWuevngMOJpCy52FWWMvUC8ws7m/LJsjYzDa0/r8luk=
++github.com/ncruces/go-strftime v1.1.0 h1:vtPmPWMkb539RGV9WpWT9EwJGvrOCKvMNI4obWL47Hk=
++github.com/ncruces/go-strftime v1.1.0/go.mod h1:yVaq7iwCN09vHRrKBrrflXT0M9tTMG2KmZ9Fj7xeG/g=
+ github.com/pelletier/go-toml/v2 v2.2.2 h1:aYUidT7k73Pcl9nb2gScu7NSrKCSHIDE89b3+6Wq+LM=
+ github.com/pelletier/go-toml/v2 v2.2.2/go.mod h1:1t835xjRzz80PqgE6HHgN2JOsmgYu/h4qDAS4n929Rs=
+ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
+ github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
++github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec h1:W09IVJc94icq4NjY3clb7Lk8O1qJ8BdBEF8z0ibU0rE=
++github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec/go.mod h1:qqbHyh8v60DhA7CoWK5oRCqLrMHRGoxYCSS9EjAz6Eo=
+ github.com/sirupsen/logrus v1.9.3 h1:dueUQJ1C2q9oE3F7wvmSGAaVtTmUizReu6fjN8uqzbQ=
+ github.com/sirupsen/logrus v1.9.3/go.mod h1:naHLuLoDiP4jHNo9R0sCBMtWGeIprob74mVsIT4qYEQ=
+ github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
+@@ -79,54 +91,27 @@ github.com/twitchyliquid64/golang-asm v0.15.1 h1:SU5vSMR7hnwNxj24w34ZyCi/FmDZTkS
+ github.com/twitchyliquid64/golang-asm v0.15.1/go.mod h1:a1lVb/DtPvCB8fslRZhAngC2+aY1QWCk3Cedj/Gdt08=
+ github.com/ugorji/go/codec v1.2.12 h1:9LC83zGrHhuUA9l16C9AHXAqEV/2wBQ4nkvumAE65EE=
+ github.com/ugorji/go/codec v1.2.12/go.mod h1:UNopzCgEMSXjBc6AOMqYvWC1ktqTAfzJZUZgYf6w6lg=
+-github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
+ golang.org/x/arch v0.0.0-20210923205945-b76863e36670/go.mod h1:5om86z9Hs0C8fWVUuoMHwpExlXzs5Tkyp9hOrfG7pp8=
+ golang.org/x/arch v0.8.0 h1:3wRIsP3pM4yUptoR96otTUOXI367OS0+c9eeRi9doIc=
+ golang.org/x/arch v0.8.0/go.mod h1:FEVrYAQjsQXMVJ1nsMoVVXPZg6p2JE2mx8psSWTDQys=
+-golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
+-golang.org/x/crypto v0.0.0-20210921155107-089bfa567519/go.mod h1:GvvjBRRGRdwPK5ydBHafDWAxML/pGHZbMvKqRZ5+Abc=
+ golang.org/x/crypto v0.23.0 h1:dIJU/v2J8Mdglj/8rJ6UUOM3Zc9zLZxVZwwxMooUSAI=
+ golang.org/x/crypto v0.23.0/go.mod h1:CKFgDieR+mRhux2Lsu27y0fO304Db0wZe70UKqHu0v8=
+-golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4/go.mod h1:jJ57K6gSWd91VN4djpZkiMVwK6gcyfeH4XE8wZrZaV4=
+-golang.org/x/mod v0.8.0/go.mod h1:iBbtSCu2XBx23ZKBPSOrRkjjQPZFPuis4dIYUhu/chs=
+-golang.org/x/net v0.0.0-20190620200207-3b0461eec859/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
+-golang.org/x/net v0.0.0-20210226172049-e18ecbb05110/go.mod h1:m0MpNAwzfU5UDzcl9v0D8zg8gWTRqZa9RBIspLL5mdg=
+-golang.org/x/net v0.0.0-20220722155237-a158d28d115b/go.mod h1:XRhObCWvk6IyKnWLug+ECip1KBveYUHfp+8e9klMJ9c=
+-golang.org/x/net v0.6.0/go.mod h1:2Tu9+aMcznHK/AK1HMvgo6xiTLG5rD5rZLDS+rp2Bjs=
++golang.org/x/mod v0.42.0 h1:ICeL3t2L30ljSPHHxDnR4fqVcBt/zR2zJAb9juavmQg=
++golang.org/x/mod v0.42.0/go.mod h1:u5fzIrRInkL8MaO1cbRkUHT64v303YIT5KEqpNr7jRs=
+ golang.org/x/net v0.25.0 h1:d/OCCoBEUq33pjydKrGQhw7IlUPI2Oylr+8qLx49kac=
+ golang.org/x/net v0.25.0/go.mod h1:JkAGAh7GEvH74S6FOH42FLoXpXbE/aqXSrIQjXgsiwM=
+ golang.org/x/oauth2 v0.37.0 h1:JUlcxA8oAtauLfiH8FX2/FkAWHAdi0QtGCGc+hofE98=
+ golang.org/x/oauth2 v0.37.0/go.mod h1:IxwZNxUULJmpBFf9K/9NTMSIfZZuvuTy1gGxhigP/58=
+-golang.org/x/sync v0.0.0-20190423024810-112230192c58/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+-golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+-golang.org/x/sync v0.1.0/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+-golang.org/x/sys v0.0.0-20190215142949-d0b11bdaac8a/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
+-golang.org/x/sys v0.0.0-20201119102817-f84b799fce68/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
+-golang.org/x/sys v0.0.0-20210615035016-665e8c7367d1/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+-golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
++golang.org/x/sync v0.24.0 h1:iqiDrGoDgyuvAKrhLQthUEzU/R378N78gXbBjxed7oA=
++golang.org/x/sync v0.24.0/go.mod h1:sUUOizhqBxiL6pEWpqNLUiaJn1ShEbZ6BBqskPbjZm0=
+ golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+-golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+ golang.org/x/sys v0.5.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+-golang.org/x/sys v0.6.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+-golang.org/x/sys v0.20.0 h1:Od9JTbYCk261bKm4M/mw7AklTlFYIa0bIp9BgSm1S8Y=
+-golang.org/x/sys v0.20.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
+-golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1/go.mod h1:bj7SfCRtBDWHUb9snDiAeCFNEtKQo2Wmx5Cou7ajbmo=
+-golang.org/x/term v0.0.0-20210927222741-03fcf44c2211/go.mod h1:jbD1KX2456YbFQfuXm/mYQcufACuNUgVhRMnK/tPxf8=
+-golang.org/x/term v0.5.0/go.mod h1:jMB1sMXY+tzblOD4FWmEbocvup2/aLOaQEp7JmGp78k=
+-golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
+-golang.org/x/text v0.3.3/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
+-golang.org/x/text v0.3.7/go.mod h1:u+2+/6zg+i71rQMx5EYifcz6MCKuco9NR6JIITiCfzQ=
+-golang.org/x/text v0.7.0/go.mod h1:mrYo+phRRbMaCq/xk9113O4dZlRixOauAjOtrjsXDZ8=
+-golang.org/x/text v0.14.0/go.mod h1:18ZOQIKpY8NJVqYksKHtTdi31H5itFRjB5/qKTNYzSU=
+-golang.org/x/text v0.15.0 h1:h1V/4gjBv8v9cjcR6+AR5+/cIYK5N/WAgiv4xlsEtAk=
+-golang.org/x/text v0.15.0/go.mod h1:18ZOQIKpY8NJVqYksKHtTdi31H5itFRjB5/qKTNYzSU=
++golang.org/x/sys v0.49.0 h1:XbzkgYJHdqh/8m2Uu0W/dQv8nktxx4BFHp1M0gROTXA=
++golang.org/x/sys v0.49.0/go.mod h1:hNLxWAXmnKAxqDtdwIYC4bM9oQPEecfsnNMuSxOs3og=
+ golang.org/x/text v0.20.0 h1:gK/Kv2otX8gz+wn7Rmb3vT96ZwuoxnQlY+HlJVj7Qug=
+ golang.org/x/text v0.20.0/go.mod h1:D4IsuqiFMhST5bX19pQ9ikHC2GsaKyk/oF+pn3ducp4=
+-golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
+-golang.org/x/tools v0.0.0-20191119224855-298f0cb1881e/go.mod h1:b+2E5dAYhXwXZwtnZ6UAqBI28+e2cm9otk0dWdXHAEo=
+-golang.org/x/tools v0.1.12/go.mod h1:hNGJHUnrk76NpqgfD5Aqm5Crs+Hm0VOH/i9J2+nxYbc=
+-golang.org/x/tools v0.6.0/go.mod h1:Xwgl3UAJ/d3gWutnCtw505GrjyAbvKui8lOU390QaIU=
+-golang.org/x/xerrors v0.0.0-20190717185122-a985d3407aa7/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
++golang.org/x/tools v0.52.0 h1:ryxg4U63oaUYk7uOLTF37n43f4qgtGvqV4Ioit1BaEs=
++golang.org/x/tools v0.52.0/go.mod h1:ItcP5UNaVGG+Yc4eIYmaFLNJ4soEopkx5Y2d4lcEurs=
+ golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543 h1:E7g+9GITq07hpfrRu66IVDexMakfv52eLZ2CXBWiKr4=
+ golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
+ google.golang.org/protobuf v1.34.1 h1:9ddQBjfCyZPOHPUiPxpYESBLc+T8P3E+Vo4IbKZgFWg=
+@@ -140,14 +125,37 @@ gorm.io/driver/mysql v1.5.7 h1:MndhOPYOfEp2rHKgkZIhJ16eVUIRf2HmzgoPmh7FCWo=
+ gorm.io/driver/mysql v1.5.7/go.mod h1:sEtPWMiqiN1N1cMXoXmBbd8C6/l+TESwriotuRRpkDM=
+ gorm.io/driver/sqlite v1.5.7 h1:8NvsrhP0ifM7LX9G4zPB97NwovUakUxc+2V2uuf3Z1I=
+ gorm.io/driver/sqlite v1.5.7/go.mod h1:U+J8craQU6Fzkcvu8oLeAQmi50TkwPEhHDEjQZXDah4=
+-gorm.io/gorm v1.25.7/go.mod h1:hbnx/Oo0ChWMn1BIhpy1oYozzpM15i4YPuHDmfYtwg8=
+-gorm.io/gorm v1.25.12 h1:I0u8i2hWQItBq1WfE0o2+WuL9+8L21K9e2HHSTE/0f8=
+-gorm.io/gorm v1.25.12/go.mod h1:xh7N7RHfYlNc5EmcI/El95gXusucDrQnHXe0+CgWcLQ=
+ gorm.io/gorm v1.26.1 h1:ghB2gUI9FkS46luZtn6DLZ0f6ooBJ5IbVej2ENFDjRw=
+ gorm.io/gorm v1.26.1/go.mod h1:8Z33v652h4//uMA76KjeDH8mJXPm1QNCYrMeatR0DOE=
+-gorm.io/plugin/dbresolver v1.5.3 h1:wFwINGZZmttuu9h7XpvbDHd8Lf9bb8GNzp/NpAMV2wU=
+-gorm.io/plugin/dbresolver v1.5.3/go.mod h1:TSrVhaUg2DZAWP3PrHlDlITEJmNOkL0tFTjvTEsQ4XE=
+ gorm.io/plugin/dbresolver v1.6.0 h1:XvKDeOtTn1EIX6s4SrKpEH82q0gXVemhYjbYZFGFVcw=
+ gorm.io/plugin/dbresolver v1.6.0/go.mod h1:tctw63jdrOezFR9HmrKnPkmig3m5Edem9fdxk9bQSzM=
++modernc.org/cc/v4 v4.30.3 h1:aDq8gIX1X7+VFgO/JYYji6pLWL2H4tv3g8WatT3KCys=
++modernc.org/cc/v4 v4.30.3/go.mod h1:OnovgIhbbMXMu1aISnJ0wvVD1KnW+cAUJkIrAWh+kVI=
++modernc.org/ccgo/v4 v4.37.0 h1:BAuJCUtIHIxFIYaFhqXIw5YaoMBlNCUlFovejHfMip4=
++modernc.org/ccgo/v4 v4.37.0/go.mod h1:/8627VhwWtAbqUXmPORxFQU5SgLrAx2jl9seLw9GBhY=
++modernc.org/fileutil v1.4.0 h1:j6ZzNTftVS054gi281TyLjHPp6CPHr2KCxEXjEbD6SM=
++modernc.org/fileutil v1.4.0/go.mod h1:EqdKFDxiByqxLk8ozOxObDSfcVOv/54xDs/DUHdvCUU=
++modernc.org/gc/v2 v2.6.5 h1:nyqdV8q46KvTpZlsw66kWqwXRHdjIlJOhG6kxiV/9xI=
++modernc.org/gc/v2 v2.6.5/go.mod h1:YgIahr1ypgfe7chRuJi2gD7DBQiKSLMPgBQe9oIiito=
++modernc.org/gc/v3 v3.2.0 h1:/Y3LGDMQaoYf55PebP1qsZ5FDGgAZyG1RYKEHeQzh1o=
++modernc.org/gc/v3 v3.2.0/go.mod h1:HFK/6AGESC7Ex+EZJhJ2Gni6cTaYpSMmU/cT9RmlfYY=
++modernc.org/goabi0 v0.2.0 h1:HvEowk7LxcPd0eq6mVOAEMai46V+i7Jrj13t4AzuNks=
++modernc.org/goabi0 v0.2.0/go.mod h1:CEFRnnJhKvWT1c1JTI3Avm+tgOWbkOu5oPA8eH8LnMI=
++modernc.org/libc v1.79.0 h1:9Dvvv++bAMSkSuBzuOFAatbTV5OIoq6Y6FohmD3e7q8=
++modernc.org/libc v1.79.0/go.mod h1:uT3kR61NsbeKJSLqq83GJwSnZMVLlSjyAz4DfTaBy1M=
++modernc.org/mathutil v1.7.1 h1:GCZVGXdaN8gTqB1Mf/usp1Y/hSqgI2vAGGP4jZMCxOU=
++modernc.org/mathutil v1.7.1/go.mod h1:4p5IwJITfppl0G4sUEDtCr4DthTaT47/N3aT6MhfgJg=
++modernc.org/memory v1.12.1 h1:nFMiWrpStgZczNl6XI9GnIk/rWhYIyHGUaR04pGbp9g=
++modernc.org/memory v1.12.1/go.mod h1:/JP4VbVC+K5sU2wZi9bHoq2MAkCnrt2r98UGeSK7Mjw=
++modernc.org/opt v0.2.0 h1:tGyef5ApycA7FSEOMraay9SaTk5zmbx7Tu+cJs4QKZg=
++modernc.org/opt v0.2.0/go.mod h1:03fq9lsNfvkYSfxrfUhZCWPk1lm4cq4N+Bh//bEtgns=
++modernc.org/sortutil v1.2.1 h1:+xyoGf15mM3NMlPDnFqrteY07klSFxLElE2PVuWIJ7w=
++modernc.org/sortutil v1.2.1/go.mod h1:7ZI3a3REbai7gzCLcotuw9AC4VZVpYMjDzETGsSMqJE=
++modernc.org/sqlite v1.61.0 h1:sQi63oLQ9uquAUA4CzOisH35Q3pEszkPBuHM0tFL8CY=
++modernc.org/sqlite v1.61.0/go.mod h1:f4gr5tbpx2umklaT/QVtbi/50hNdM+4ng+2zMo8KXJ0=
++modernc.org/strutil v1.2.1 h1:UneZBkQA+DX2Rp35KcM69cSsNES9ly8mQWD71HKlOA0=
++modernc.org/strutil v1.2.1/go.mod h1:EHkiggD70koQxjVdSBM3JKM7k6L0FbGE5eymy9i3B9A=
++modernc.org/token v1.1.0 h1:Xl7Ap9dKaEs5kLoOQeQmPWevfnk/DM5qcLcYlA8ys6Y=
++modernc.org/token v1.1.0/go.mod h1:UGzOrNV1mAFSEB63lOFHIpNRUVMvYTc6yu1SMY/XTDM=
+ nullprogram.com/x/optparse v1.0.0/go.mod h1:KdyPE+Igbe0jQUrVfMqDMeJQIJZEuyV7pjYmp6pbG50=
+ rsc.io/pdf v0.1.1/go.mod h1:n8OzWcQ6Sp37PL01nO98y4iUCRdTGarVfzxY20ICaU4=
+diff --git a/internal/api/test/auth_session_metadata_test.go b/internal/api/test/auth_session_metadata_test.go
+index 5fdd08a..5babdee 100644
+--- a/internal/api/test/auth_session_metadata_test.go
++++ b/internal/api/test/auth_session_metadata_test.go
+@@ -11,8 +11,8 @@ import (
+ 
+ 	"cpa-usage-keeper/internal/auth"
+ 	"cpa-usage-keeper/internal/entities"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"cpa-usage-keeper/internal/timeutil"
+-	"gorm.io/driver/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/auth/test/session_fixtures_test.go b/internal/auth/test/session_fixtures_test.go
+index 61b25f4..694e978 100644
+--- a/internal/auth/test/session_fixtures_test.go
++++ b/internal/auth/test/session_fixtures_test.go
+@@ -5,7 +5,7 @@ import (
+ 	"testing"
+ 
+ 	"cpa-usage-keeper/internal/entities"
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/auth/test/session_test.go b/internal/auth/test/session_test.go
+index 8b9fc6f..5f5ae80 100644
+--- a/internal/auth/test/session_test.go
++++ b/internal/auth/test/session_test.go
+@@ -10,7 +10,7 @@ import (
+ 	"unsafe"
+ 
+ 	"cpa-usage-keeper/internal/entities"
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/backup/backup.go b/internal/backup/backup.go
+index 60812b4..0f3258f 100644
+--- a/internal/backup/backup.go
++++ b/internal/backup/backup.go
+@@ -10,8 +10,6 @@ import (
+ 	"sort"
+ 	"strings"
+ 	"time"
+-
+-	"github.com/mattn/go-sqlite3"
+ )
+ 
+ type Writer struct {
+@@ -88,52 +86,7 @@ func copySQLiteDatabase(ctx context.Context, sourceDB *sql.DB, destPath string)
+ 		return fmt.Errorf("pin source backup snapshot: %w", err)
+ 	}
+ 
+-	destDB, err := sql.Open("sqlite3", destPath)
+-	if err != nil {
+-		return fmt.Errorf("open backup database: %w", err)
+-	}
+-	defer destDB.Close()
+-	destConn, err := destDB.Conn(ctx)
+-	if err != nil {
+-		return fmt.Errorf("open backup database connection: %w", err)
+-	}
+-	defer destConn.Close()
+-
+-	return sourceConn.Raw(func(sourceDriverConn any) error {
+-		sourceSQLite, ok := sourceDriverConn.(*sqlite3.SQLiteConn)
+-		if !ok {
+-			return fmt.Errorf("source database connection is not sqlite3")
+-		}
+-		return destConn.Raw(func(destDriverConn any) error {
+-			destSQLite, ok := destDriverConn.(*sqlite3.SQLiteConn)
+-			if !ok {
+-				return fmt.Errorf("backup database connection is not sqlite3")
+-			}
+-			backup, err := destSQLite.Backup("main", sourceSQLite, "main")
+-			if err != nil {
+-				return fmt.Errorf("start sqlite backup: %w", err)
+-			}
+-			var backupErr error
+-			for {
+-				if err := ctx.Err(); err != nil {
+-					backupErr = err
+-					break
+-				}
+-				done, err := backup.Step(100)
+-				if err != nil {
+-					backupErr = fmt.Errorf("copy sqlite backup: %w", err)
+-					break
+-				}
+-				if done {
+-					break
+-				}
+-			}
+-			if err := backup.Close(); err != nil {
+-				backupErr = errors.Join(backupErr, fmt.Errorf("close sqlite backup: %w", err))
+-			}
+-			return backupErr
+-		})
+-	})
++	return backupSQLiteConnection(ctx, sourceConn, destPath)
+ }
+ 
+ func (w *Writer) Cleanup(retentionDays int, now time.Time) (int, error) {
+diff --git a/internal/backup/sqlite_backup_purego.go b/internal/backup/sqlite_backup_purego.go
+new file mode 100644
+index 0000000..709ac93
+--- /dev/null
++++ b/internal/backup/sqlite_backup_purego.go
+@@ -0,0 +1,48 @@
++//go:build !sqlite_trace
++
++package backup
++
++import (
++	"context"
++	"database/sql"
++	"errors"
++	"fmt"
++
++	moderncsqlite "modernc.org/sqlite"
++)
++
++type sqliteBackupConnection interface {
++	NewBackup(string) (*moderncsqlite.Backup, error)
++}
++
++func backupSQLiteConnection(ctx context.Context, sourceConn *sql.Conn, destPath string) error {
++	return sourceConn.Raw(func(sourceDriverConn any) error {
++		sourceSQLite, ok := sourceDriverConn.(sqliteBackupConnection)
++		if !ok {
++			return fmt.Errorf("source database connection does not support SQLite backup")
++		}
++		backup, err := sourceSQLite.NewBackup(destPath)
++		if err != nil {
++			return fmt.Errorf("start sqlite backup: %w", err)
++		}
++		var backupErr error
++		for {
++			if err := ctx.Err(); err != nil {
++				backupErr = err
++				break
++			}
++			more, err := backup.Step(100)
++			if err != nil {
++				backupErr = fmt.Errorf("copy sqlite backup: %w", err)
++				break
++			}
++			if !more {
++				break
++			}
++		}
++		if err := backup.Finish(); err != nil {
++			backupErr = errors.Join(backupErr, fmt.Errorf("close sqlite backup: %w", err))
++		}
++		return backupErr
++	})
++}
+diff --git a/internal/backup/sqlite_backup_trace.go b/internal/backup/sqlite_backup_trace.go
+new file mode 100644
+index 0000000..1d9e9c0
+--- /dev/null
++++ b/internal/backup/sqlite_backup_trace.go
+@@ -0,0 +1,61 @@
++//go:build sqlite_trace
++
++package backup
++
++import (
++	"context"
++	"database/sql"
++	"errors"
++	"fmt"
++
++	"github.com/mattn/go-sqlite3"
++)
++
++func backupSQLiteConnection(ctx context.Context, sourceConn *sql.Conn, destPath string) error {
++	destDB, err := sql.Open("sqlite3", destPath)
++	if err != nil {
++		return fmt.Errorf("open backup database: %w", err)
++	}
++	defer destDB.Close()
++	destConn, err := destDB.Conn(ctx)
++	if err != nil {
++		return fmt.Errorf("open backup database connection: %w", err)
++	}
++	defer destConn.Close()
++
++	return sourceConn.Raw(func(sourceDriverConn any) error {
++		sourceSQLite, ok := sourceDriverConn.(*sqlite3.SQLiteConn)
++		if !ok {
++			return fmt.Errorf("source database connection is not sqlite3")
++		}
++		return destConn.Raw(func(destDriverConn any) error {
++			destSQLite, ok := destDriverConn.(*sqlite3.SQLiteConn)
++			if !ok {
++				return fmt.Errorf("backup database connection is not sqlite3")
++			}
++			backup, err := destSQLite.Backup("main", sourceSQLite, "main")
++			if err != nil {
++				return fmt.Errorf("start sqlite backup: %w", err)
++			}
++			var backupErr error
++			for {
++				if err := ctx.Err(); err != nil {
++					backupErr = err
++					break
++				}
++				done, err := backup.Step(100)
++				if err != nil {
++					backupErr = fmt.Errorf("copy sqlite backup: %w", err)
++					break
++				}
++				if done {
++					break
++				}
++			}
++			if err := backup.Close(); err != nil {
++				backupErr = errors.Join(backupErr, fmt.Errorf("close sqlite backup: %w", err))
++			}
++			return backupErr
++		})
++	})
++}
+diff --git a/internal/backup/test/backup_test.go b/internal/backup/test/backup_test.go
+index 1ada430..556ea17 100644
+--- a/internal/backup/test/backup_test.go
++++ b/internal/backup/test/backup_test.go
+@@ -15,7 +15,7 @@ import (
+ 
+ 	"cpa-usage-keeper/internal/backup"
+ 
+-	_ "github.com/mattn/go-sqlite3"
++	_ "modernc.org/sqlite"
+ )
+ 
+ func TestWriterWriteDatabaseBacksUpSQLiteDatabase(t *testing.T) {
+@@ -378,7 +378,7 @@ func TestCleanupIgnoresMissingDirectory(t *testing.T) {
+ 
+ func openTestSQLiteDB(t *testing.T, path string) *sql.DB {
+ 	t.Helper()
+-	db, err := sql.Open("sqlite3", path)
++	db, err := sql.Open("sqlite", path)
+ 	if err != nil {
+ 		t.Fatalf("open sqlite db: %v", err)
+ 	}
+diff --git a/internal/benchmark/capacity/probe.go b/internal/benchmark/capacity/probe.go
+index c9eedfd..309e199 100644
+--- a/internal/benchmark/capacity/probe.go
++++ b/internal/benchmark/capacity/probe.go
+@@ -18,7 +18,7 @@ import (
+ 	"time"
+ 
+ 	"cpa-usage-keeper/internal/helper"
+-	_ "github.com/mattn/go-sqlite3"
++	_ "modernc.org/sqlite"
+ )
+ 
+ type UsagePayloadMetadata struct {
+@@ -355,7 +355,7 @@ func openProbeDatabase(path string) (*sql.DB, error) {
+ 		return nil, fmt.Errorf("resolve probe database path: %w", err)
+ 	}
+ 	dsn := helper.BuildSQLiteFileURI(absolute) + "?mode=ro&_query_only=on&_busy_timeout=5000"
+-	database, err := sql.Open("sqlite3", dsn)
++	database, err := sql.Open("sqlite", dsn)
+ 	if err != nil {
+ 		return nil, fmt.Errorf("open probe database: %w", err)
+ 	}
+diff --git a/internal/benchmark/capacity/test/dataset_test.go b/internal/benchmark/capacity/test/dataset_test.go
+index ffed838..0c320b9 100644
+--- a/internal/benchmark/capacity/test/dataset_test.go
++++ b/internal/benchmark/capacity/test/dataset_test.go
+@@ -12,7 +12,7 @@ import (
+ 
+ 	"cpa-usage-keeper/internal/benchmark/capacity"
+ 	"cpa-usage-keeper/internal/entities"
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/benchmark/capacity/test/orchestrator_test.go b/internal/benchmark/capacity/test/orchestrator_test.go
+index 7fac77b..20b7eab 100644
+--- a/internal/benchmark/capacity/test/orchestrator_test.go
++++ b/internal/benchmark/capacity/test/orchestrator_test.go
+@@ -8,7 +8,7 @@ import (
+ 	"testing"
+ 
+ 	"cpa-usage-keeper/internal/benchmark/capacity"
+-	_ "github.com/mattn/go-sqlite3"
++	_ "modernc.org/sqlite"
+ )
+ 
+ func TestResumeCellMatchesTerminalExactProvenance(t *testing.T) {
+@@ -202,7 +202,7 @@ func TestResetDatasetCloneReplacesPreviousProbeState(t *testing.T) {
+ 	root := t.TempDir()
+ 	source := filepath.Join(root, "source.db")
+ 	destination := filepath.Join(root, "work", "app.db")
+-	sourceDB, err := sql.Open("sqlite3", source)
++	sourceDB, err := sql.Open("sqlite", source)
+ 	if err != nil {
+ 		t.Fatalf("open source database: %v", err)
+ 	}
+@@ -224,7 +224,7 @@ func TestResetDatasetCloneReplacesPreviousProbeState(t *testing.T) {
+ 	if err := capacity.ResetDatasetClone(t.Context(), source, destination); err != nil {
+ 		t.Fatalf("ResetDatasetClone returned error: %v", err)
+ 	}
+-	destinationDB, err := sql.Open("sqlite3", destination+"?mode=ro")
++	destinationDB, err := sql.Open("sqlite", destination+"?mode=ro")
+ 	if err != nil {
+ 		t.Fatalf("open restored clone: %v", err)
+ 	}
+diff --git a/internal/benchmark/cmd/pricingbench/dataset.go b/internal/benchmark/cmd/pricingbench/dataset.go
+index bcc57ee..144100b 100644
+--- a/internal/benchmark/cmd/pricingbench/dataset.go
++++ b/internal/benchmark/cmd/pricingbench/dataset.go
+@@ -9,7 +9,7 @@ import (
+ 	"time"
+ 
+ 	"cpa-usage-keeper/internal/benchmark/capacity"
+-	_ "github.com/mattn/go-sqlite3"
++	_ "modernc.org/sqlite"
+ )
+ 
+ const (
+@@ -82,7 +82,7 @@ func preparePricingDataset(ctx context.Context, path string, events int64, scena
+ 		return spec, fmt.Errorf("generate pricing benchmark dataset: %w", err)
+ 	}
+ 	spec.Generated = generated
+-	db, err := sql.Open("sqlite3", path)
++	db, err := sql.Open("sqlite", path)
+ 	if err != nil {
+ 		return spec, err
+ 	}
+diff --git a/internal/benchmark/cmd/pricingbench/test/pricingbench_test.go b/internal/benchmark/cmd/pricingbench/test/pricingbench_test.go
+index 81ef0ba..1b10b30 100644
+--- a/internal/benchmark/cmd/pricingbench/test/pricingbench_test.go
++++ b/internal/benchmark/cmd/pricingbench/test/pricingbench_test.go
+@@ -13,7 +13,7 @@ import (
+ 	"testing"
+ 	"time"
+ 
+-	_ "github.com/mattn/go-sqlite3"
++	_ "modernc.org/sqlite"
+ )
+ 
+ // TestPricingBenchCLIExercisesRealOldSchemas 验证专用文件确实从旧物理结构升级，且冷热/历史五维场景均跑完重算与追赶。
+@@ -173,7 +173,7 @@ func onePricingM1Backup(t *testing.T, root string) string {
+ 
+ func openPricingBenchTestDB(t *testing.T, path string) *sql.DB {
+ 	t.Helper()
+-	db, err := sql.Open("sqlite3", "file:"+path+"?mode=ro")
++	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+diff --git a/internal/config/config.go b/internal/config/config.go
+index 8a4b13d..8265972 100644
+--- a/internal/config/config.go
++++ b/internal/config/config.go
+@@ -19,6 +19,7 @@ import (
+ 
+ const (
+ 	DefaultTimeZone                = "Asia/Shanghai"
++	DefaultCPABaseURL              = "http://127.0.0.1:8317"
+ 	publicLoginPasswordPlaceholder = "replace-with-your-login-password"
+ 	RedisQueueBatchSizeDefault     = 10000
+ 	MetadataSyncIntervalDefault    = 30 * time.Second
+@@ -240,7 +241,7 @@ func Load(options LoadOptions) (*Config, error) {
+ 		return nil, err
+ 	}
+ 
+-	tlsSkipVerify, err := getBool("TLS_SKIP_VERIFY", false)
++	tlsSkipVerify, err := getBool("TLS_SKIP_VERIFY", true)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+@@ -293,7 +294,7 @@ func Load(options LoadOptions) (*Config, error) {
+ 		TLSEnabled:                    tlsEnabled,
+ 		TLSCertFile:                   strings.TrimSpace(os.Getenv("TLS_CERT_FILE")),
+ 		TLSKeyFile:                    strings.TrimSpace(os.Getenv("TLS_KEY_FILE")),
+-		CPABaseURL:                    strings.TrimSpace(os.Getenv("CPA_BASE_URL")),
++		CPABaseURL:                    getString("CPA_BASE_URL", DefaultCPABaseURL),
+ 		CPAManagementKey:              strings.TrimSpace(os.Getenv("CPA_MANAGEMENT_KEY")),
+ 		CPARequestLogAccessEnabled:    cpaRequestLogAccessEnabled,
+ 		RedisQueueAddr:                strings.TrimSpace(os.Getenv("REDIS_QUEUE_ADDR")),
+@@ -324,9 +325,6 @@ func Load(options LoadOptions) (*Config, error) {
+ 	if appHost := strings.TrimSpace(options.AppHost); appHost != "" {
+ 		cfg.AppHost = appHost
+ 	}
+-	if cfg.CPABaseURL == "" {
+-		return nil, fmt.Errorf("CPA_BASE_URL is required")
+-	}
+ 	if cfg.CPAManagementKey == "" {
+ 		return nil, fmt.Errorf("CPA_MANAGEMENT_KEY is required")
+ 	}
+diff --git a/internal/config/test/config_test.go b/internal/config/test/config_test.go
+index c6f7f23..49f4e5f 100644
+--- a/internal/config/test/config_test.go
++++ b/internal/config/test/config_test.go
+@@ -94,8 +94,8 @@ func TestLoadFromEnvAppliesDefaults(t *testing.T) {
+ 	if cfg.AuthSessionTTL != 7*24*time.Hour {
+ 		t.Fatalf("expected default auth session ttl 168h, got %s", cfg.AuthSessionTTL)
+ 	}
+-	if cfg.TLSSkipVerify {
+-		t.Fatal("expected TLS skip verify to be disabled by default")
++	if !cfg.TLSSkipVerify {
++		t.Fatal("expected TLS skip verify to be enabled by default")
+ 	}
+ 	if cfg.RedisQueueTLS {
+ 		t.Fatal("expected redis queue TLS to be disabled by default")
+@@ -223,9 +223,12 @@ func TestLoadFromEnvRequiresCriticalValues(t *testing.T) {
+ 	t.Run("missing base url", func(t *testing.T) {
+ 		t.Setenv("CPA_MANAGEMENT_KEY", "secret")
+ 
+-		_, err := LoadFromEnv()
+-		if err == nil || err.Error() != "CPA_BASE_URL is required" {
+-			t.Fatalf("expected CPA_BASE_URL required error, got %v", err)
++		cfg, err := LoadFromEnv()
++		if err != nil {
++			t.Fatalf("LoadFromEnv returned error: %v", err)
++		}
++		if cfg.CPABaseURL != DefaultCPABaseURL {
++			t.Fatalf("expected default CPA base url, got %q", cfg.CPABaseURL)
+ 		}
+ 	})
+ 
+diff --git a/internal/entities/test/entities_test.go b/internal/entities/test/entities_test.go
+index a6112d2..f141c37 100644
+--- a/internal/entities/test/entities_test.go
++++ b/internal/entities/test/entities_test.go
+@@ -7,7 +7,7 @@ import (
+ 	"testing"
+ 	"time"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/logging/test/gorm_test.go b/internal/logging/test/gorm_test.go
+index 3beabaf..729e26a 100644
+--- a/internal/logging/test/gorm_test.go
++++ b/internal/logging/test/gorm_test.go
+@@ -10,7 +10,7 @@ import (
+ 
+ 	"cpa-usage-keeper/internal/config"
+ 	"cpa-usage-keeper/internal/logging"
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ 	gormlogger "gorm.io/gorm/logger"
+ )
+diff --git a/internal/quota/test/service_refresh_test.go b/internal/quota/test/service_refresh_test.go
+index 2430b6c..da05e86 100644
+--- a/internal/quota/test/service_refresh_test.go
++++ b/internal/quota/test/service_refresh_test.go
+@@ -13,7 +13,7 @@ import (
+ 	"cpa-usage-keeper/internal/entities"
+ 	. "cpa-usage-keeper/internal/quota"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/releasecheck/test/runner_test.go b/internal/releasecheck/test/runner_test.go
+index 1ceabfe..daa6f07 100644
+--- a/internal/releasecheck/test/runner_test.go
++++ b/internal/releasecheck/test/runner_test.go
+@@ -14,7 +14,7 @@ import (
+ 	"cpa-usage-keeper/internal/entities"
+ 	"cpa-usage-keeper/internal/releasecheck"
+ 	"cpa-usage-keeper/internal/repository"
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ 	"gorm.io/gorm/logger"
+ )
+diff --git a/internal/repository/codex_quota_efficiency.go b/internal/repository/codex_quota_efficiency.go
+index b003bc4..a8988d2 100644
+--- a/internal/repository/codex_quota_efficiency.go
++++ b/internal/repository/codex_quota_efficiency.go
+@@ -429,6 +429,9 @@ func streamCodexQuotaEfficiencyUsage(ctx context.Context, db *gorm.DB, provider
+ 
+ 	cursor := codexQuotaEfficiencyUsageCursor{works: works}
+ 	for _, read := range usageEventTimeReads(globalStart, globalEnd, false) {
++		if err := ctx.Err(); err != nil {
++			return fmt.Errorf("stream codex quota efficiency usage: %w", err)
++		}
+ 		if err := streamCodexQuotaEfficiencyUsageRead(ctx, db, provider, authIndex, read, &cursor); err != nil {
+ 			return err
+ 		}
+diff --git a/internal/repository/codex_quota_efficiency_time_decode.go b/internal/repository/codex_quota_efficiency_time_decode.go
+index fd36fdd..a471bfa 100644
+--- a/internal/repository/codex_quota_efficiency_time_decode.go
++++ b/internal/repository/codex_quota_efficiency_time_decode.go
+@@ -9,10 +9,21 @@ import (
+ 
+ 	"cpa-usage-keeper/internal/timeutil"
+ 
+-	"github.com/mattn/go-sqlite3"
+ 	"gorm.io/gorm/schema"
+ )
+ 
++var sqliteTimestampFormats = []string{
++	"2006-01-02 15:04:05.999999999-07:00",
++	"2006-01-02T15:04:05.999999999-07:00",
++	"2006-01-02 15:04:05.999999999",
++	"2006-01-02T15:04:05.999999999",
++	"2006-01-02 15:04:05",
++	"2006-01-02T15:04:05",
++	"2006-01-02 15:04",
++	"2006-01-02T15:04",
++	"2006-01-02",
++}
++
+ // 这两个私有读取类型只用于额度历史的 DATETIME 投影，不改变实体或全局 serializer。
+ type codexQuotaEfficiencyEventTime struct{ time.Time }
+ 
+@@ -43,7 +54,10 @@ func (at codexQuotaEfficiencyObservedTime) Value(ctx context.Context, field *sch
+ func scanCodexQuotaEfficiencyEventTime(value any) (time.Time, error) {
+ 	switch stored := value.(type) {
+ 	case string:
+-		return parseCodexQuotaEfficiencyDatetime(stored), nil
++		if parsed, ok := parseCodexQuotaEfficiencyDatetime(stored); ok {
++			return parsed, nil
++		}
++		return time.Time{}, fmt.Errorf("unsupported Scan, storing driver.Value type string into type *time.Time")
+ 	case int64:
+ 		return codexQuotaEfficiencyIntegerTime(stored), nil
+ 	case time.Time:
+@@ -59,7 +73,14 @@ func scanCodexQuotaEfficiencyObservedTime(value any) (time.Time, error) {
+ 	case nil:
+ 		return time.Time{}, nil
+ 	case string:
+-		return timeutil.NormalizeStorageTime(parseCodexQuotaEfficiencyDatetime(stored)), nil
++		if parsed, ok := parseCodexQuotaEfficiencyDatetime(stored); ok {
++			return timeutil.NormalizeStorageTime(parsed), nil
++		}
++		parsed, err := timeutil.ParseStorageTime(stored)
++		if err != nil {
++			return time.Time{}, err
++		}
++		return timeutil.NormalizeStorageTime(parsed), nil
+ 	case int64:
+ 		return timeutil.NormalizeStorageTime(codexQuotaEfficiencyIntegerTime(stored)), nil
+ 	case time.Time:
+@@ -76,29 +97,31 @@ func scanCodexQuotaEfficiencyObservedTime(value any) (time.Time, error) {
+ }
+ 
+ func codexQuotaEfficiencyIntegerTime(value int64) time.Time {
+-	// 与固定版本 go-sqlite3 保持相同严格阈值，以及 int64 毫秒乘法的溢出语义。
++	// 与 pure-Go SQLite 驱动保持相同严格阈值。
+ 	if value > 1e12 || value < -1e12 {
+-		value *= int64(time.Millisecond)
+-		return time.Unix(0, value).UTC()
++		return time.UnixMilli(value).UTC()
+ 	}
+ 	return time.Unix(value, 0).UTC()
+ }
+ 
+-func parseCodexQuotaEfficiencyDatetime(value string) time.Time {
++func parseCodexQuotaEfficiencyDatetime(value string) (time.Time, bool) {
++	if at, err := time.Parse("2006-01-02 15:04:05.999999999 -0700 MST", strings.TrimSpace(value)); err == nil {
++		return at, true
++	}
+ 	// 只给严格形状的持久 RFC3339 时间启用 Go 的快速解析；其它输入逐值复现驱动。
+ 	if isCodexQuotaEfficiencyRFC3339(value) {
+ 		if at, err := time.ParseInLocation(time.RFC3339Nano, value, time.UTC); err == nil {
+-			return at
++			return at, true
+ 		}
+ 	}
+-	// go-sqlite3 只删掉一个尾随 Z，不 TrimSpace；无 offset 按 UTC，非法 TEXT 为零值。
++	// modernc SQLite 只删掉一个尾随 Z，不 TrimSpace；无 offset 按 UTC。
+ 	value = strings.TrimSuffix(value, "Z")
+-	for _, layout := range sqlite3.SQLiteTimestampFormats {
++	for _, layout := range sqliteTimestampFormats {
+ 		if at, err := time.ParseInLocation(layout, value, time.UTC); err == nil {
+-			return at
++			return at, true
+ 		}
+ 	}
+-	return time.Time{}
++	return time.Time{}, false
+ }
+ 
+ func isCodexQuotaEfficiencyRFC3339(value string) bool {
+diff --git a/internal/repository/db.go b/internal/repository/db.go
+index d22264f..b2f971f 100644
+--- a/internal/repository/db.go
++++ b/internal/repository/db.go
+@@ -16,9 +16,9 @@ import (
+ 	"cpa-usage-keeper/internal/logging"
+ 	"cpa-usage-keeper/internal/repository/dto"
+ 	"cpa-usage-keeper/internal/repository/migration"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"cpa-usage-keeper/internal/timeutil"
+ 	"github.com/sirupsen/logrus"
+-	"gorm.io/driver/sqlite"
+ 	"gorm.io/gorm"
+ 	"gorm.io/plugin/dbresolver"
+ )
+@@ -200,6 +200,9 @@ func OpenDatabaseConnection(cfg config.Config) (*gorm.DB, error) {
+ 	if !sqliteDatabaseRequiresSinglePool(cfg.SQLitePath) && !strings.EqualFold(strings.TrimSpace(journalMode), "wal") {
+ 		return nil, fmt.Errorf("enable sqlite WAL: journal mode is %q", journalMode)
+ 	}
++	if err := db.Exec("PRAGMA synchronous=NORMAL").Error; err != nil {
++		return nil, fmt.Errorf("set sqlite synchronous mode: %w", err)
++	}
+ 	if err := db.Exec("PRAGMA busy_timeout=15000").Error; err != nil {
+ 		return nil, fmt.Errorf("set sqlite busy timeout: %w", err)
+ 	}
+@@ -286,7 +289,7 @@ func sqliteReadDSN(path string) (string, error) {
+ 	query.Set("_query_only", "on")
+ 	query.Set("cache", "private")
+ 
+-	// go-sqlite3 只有 file: URI 才会把 mode=ro 交给 SQLite；绝对化还能避免相对路径被误作 URI authority。
++	// SQLite 驱动只有在 file: URI 下才会把 mode=ro 交给 SQLite；绝对化还能避免相对路径被误作 URI authority。
+ 	uriFilename := filename
+ 	if !strings.HasPrefix(strings.ToLower(uriFilename), "file:") {
+ 		absoluteFilename, err := filepath.Abs(uriFilename)
+diff --git a/internal/repository/migration/test/20260503_snapshot_runs_test.go b/internal/repository/migration/test/20260503_snapshot_runs_test.go
+index c926d61..d2412af 100644
+--- a/internal/repository/migration/test/20260503_snapshot_runs_test.go
++++ b/internal/repository/migration/test/20260503_snapshot_runs_test.go
+@@ -6,7 +6,7 @@ import (
+ 	"time"
+ 
+ 	"cpa-usage-keeper/internal/entities"
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260503_usage_event_redis_fields_test.go b/internal/repository/migration/test/20260503_usage_event_redis_fields_test.go
+index 43ff6a1..52c917e 100644
+--- a/internal/repository/migration/test/20260503_usage_event_redis_fields_test.go
++++ b/internal/repository/migration/test/20260503_usage_event_redis_fields_test.go
+@@ -5,7 +5,7 @@ import (
+ 	"testing"
+ 
+ 	"cpa-usage-keeper/internal/entities"
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260504_usage_event_identity_fields_test.go b/internal/repository/migration/test/20260504_usage_event_identity_fields_test.go
+index 805d16e..929d9d9 100644
+--- a/internal/repository/migration/test/20260504_usage_event_identity_fields_test.go
++++ b/internal/repository/migration/test/20260504_usage_event_identity_fields_test.go
+@@ -5,7 +5,7 @@ import (
+ 	"testing"
+ 
+ 	"cpa-usage-keeper/internal/entities"
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260505_ai_provider_auth_index_test.go b/internal/repository/migration/test/20260505_ai_provider_auth_index_test.go
+index 7319413..2894890 100644
+--- a/internal/repository/migration/test/20260505_ai_provider_auth_index_test.go
++++ b/internal/repository/migration/test/20260505_ai_provider_auth_index_test.go
+@@ -6,7 +6,7 @@ import (
+ 	"time"
+ 
+ 	"cpa-usage-keeper/internal/entities"
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260505_usage_identity_lookup_key_test.go b/internal/repository/migration/test/20260505_usage_identity_lookup_key_test.go
+index 3f97206..ab08e90 100644
+--- a/internal/repository/migration/test/20260505_usage_identity_lookup_key_test.go
++++ b/internal/repository/migration/test/20260505_usage_identity_lookup_key_test.go
+@@ -5,7 +5,7 @@ import (
+ 	"testing"
+ 
+ 	"cpa-usage-keeper/internal/entities"
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260506_usage_performance_indexes_test.go b/internal/repository/migration/test/20260506_usage_performance_indexes_test.go
+index bd9b110..3427cdc 100644
+--- a/internal/repository/migration/test/20260506_usage_performance_indexes_test.go
++++ b/internal/repository/migration/test/20260506_usage_performance_indexes_test.go
+@@ -7,7 +7,7 @@ import (
+ 	"strings"
+ 	"testing"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260507_usage_identity_metadata_fields_test.go b/internal/repository/migration/test/20260507_usage_identity_metadata_fields_test.go
+index d330100..c32a7a7 100644
+--- a/internal/repository/migration/test/20260507_usage_identity_metadata_fields_test.go
++++ b/internal/repository/migration/test/20260507_usage_identity_metadata_fields_test.go
+@@ -6,7 +6,7 @@ import (
+ 
+ 	"cpa-usage-keeper/internal/entities"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260508_usage_event_model_alias_test.go b/internal/repository/migration/test/20260508_usage_event_model_alias_test.go
+index de2b413..421dc18 100644
+--- a/internal/repository/migration/test/20260508_usage_event_model_alias_test.go
++++ b/internal/repository/migration/test/20260508_usage_event_model_alias_test.go
+@@ -5,7 +5,7 @@ import (
+ 	"path/filepath"
+ 	"testing"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260509_usage_identity_quota_fields_test.go b/internal/repository/migration/test/20260509_usage_identity_quota_fields_test.go
+index 8534f6f..f517643 100644
+--- a/internal/repository/migration/test/20260509_usage_identity_quota_fields_test.go
++++ b/internal/repository/migration/test/20260509_usage_identity_quota_fields_test.go
+@@ -7,7 +7,7 @@ import (
+ 
+ 	"cpa-usage-keeper/internal/entities"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260510_remove_usage_identity_quota_fields_test.go b/internal/repository/migration/test/20260510_remove_usage_identity_quota_fields_test.go
+index 5d6bc6d..3905811 100644
+--- a/internal/repository/migration/test/20260510_remove_usage_identity_quota_fields_test.go
++++ b/internal/repository/migration/test/20260510_remove_usage_identity_quota_fields_test.go
+@@ -4,7 +4,7 @@ import (
+ 	"path/filepath"
+ 	"testing"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260511_usage_identity_base_url_test.go b/internal/repository/migration/test/20260511_usage_identity_base_url_test.go
+index 0e5c97c..71e6350 100644
+--- a/internal/repository/migration/test/20260511_usage_identity_base_url_test.go
++++ b/internal/repository/migration/test/20260511_usage_identity_base_url_test.go
+@@ -7,7 +7,7 @@ import (
+ 
+ 	"cpa-usage-keeper/internal/entities"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260513_cpa_api_keys_test.go b/internal/repository/migration/test/20260513_cpa_api_keys_test.go
+index 5ab14bc..e3c2e04 100644
+--- a/internal/repository/migration/test/20260513_cpa_api_keys_test.go
++++ b/internal/repository/migration/test/20260513_cpa_api_keys_test.go
+@@ -6,7 +6,7 @@ import (
+ 
+ 	"cpa-usage-keeper/internal/entities"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260513_int64_primary_keys_test.go b/internal/repository/migration/test/20260513_int64_primary_keys_test.go
+index 3b13f16..4bdd713 100644
+--- a/internal/repository/migration/test/20260513_int64_primary_keys_test.go
++++ b/internal/repository/migration/test/20260513_int64_primary_keys_test.go
+@@ -7,7 +7,7 @@ import (
+ 
+ 	"cpa-usage-keeper/internal/entities"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260514_usage_event_cache_tokens_test.go b/internal/repository/migration/test/20260514_usage_event_cache_tokens_test.go
+index ff4215f..97d1b94 100644
+--- a/internal/repository/migration/test/20260514_usage_event_cache_tokens_test.go
++++ b/internal/repository/migration/test/20260514_usage_event_cache_tokens_test.go
+@@ -4,7 +4,7 @@ import (
+ 	"path/filepath"
+ 	"testing"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260514_usage_event_event_key_index_test.go b/internal/repository/migration/test/20260514_usage_event_event_key_index_test.go
+index ed52b94..f201ab7 100644
+--- a/internal/repository/migration/test/20260514_usage_event_event_key_index_test.go
++++ b/internal/repository/migration/test/20260514_usage_event_event_key_index_test.go
+@@ -4,7 +4,7 @@ import (
+ 	"path/filepath"
+ 	"testing"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260514_usage_event_plain_dimension_indexes_test.go b/internal/repository/migration/test/20260514_usage_event_plain_dimension_indexes_test.go
+index 1a49fad..93bfdc5 100644
+--- a/internal/repository/migration/test/20260514_usage_event_plain_dimension_indexes_test.go
++++ b/internal/repository/migration/test/20260514_usage_event_plain_dimension_indexes_test.go
+@@ -4,7 +4,7 @@ import (
+ 	"path/filepath"
+ 	"testing"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260514_usage_overview_stats_test.go b/internal/repository/migration/test/20260514_usage_overview_stats_test.go
+index 2a34039..fdb0b2a 100644
+--- a/internal/repository/migration/test/20260514_usage_overview_stats_test.go
++++ b/internal/repository/migration/test/20260514_usage_overview_stats_test.go
+@@ -5,7 +5,7 @@ import (
+ 	"slices"
+ 	"testing"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260517_usage_identity_sync_metadata_fields_test.go b/internal/repository/migration/test/20260517_usage_identity_sync_metadata_fields_test.go
+index 3083470..e52d531 100644
+--- a/internal/repository/migration/test/20260517_usage_identity_sync_metadata_fields_test.go
++++ b/internal/repository/migration/test/20260517_usage_identity_sync_metadata_fields_test.go
+@@ -7,7 +7,7 @@ import (
+ 
+ 	"cpa-usage-keeper/internal/entities"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260518_usage_overview_rollup_dimensions_test.go b/internal/repository/migration/test/20260518_usage_overview_rollup_dimensions_test.go
+index ae6746d..c0669dd 100644
+--- a/internal/repository/migration/test/20260518_usage_overview_rollup_dimensions_test.go
++++ b/internal/repository/migration/test/20260518_usage_overview_rollup_dimensions_test.go
+@@ -4,7 +4,7 @@ import (
+ 	"path/filepath"
+ 	"testing"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260519_usage_event_reasoning_effort_test.go b/internal/repository/migration/test/20260519_usage_event_reasoning_effort_test.go
+index 6247e7b..cb246c5 100644
+--- a/internal/repository/migration/test/20260519_usage_event_reasoning_effort_test.go
++++ b/internal/repository/migration/test/20260519_usage_event_reasoning_effort_test.go
+@@ -4,7 +4,7 @@ import (
+ 	"path/filepath"
+ 	"testing"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260528_usage_event_cpa_response_fields_test.go b/internal/repository/migration/test/20260528_usage_event_cpa_response_fields_test.go
+index 649bba3..116c810 100644
+--- a/internal/repository/migration/test/20260528_usage_event_cpa_response_fields_test.go
++++ b/internal/repository/migration/test/20260528_usage_event_cpa_response_fields_test.go
+@@ -5,7 +5,7 @@ import (
+ 	"path/filepath"
+ 	"testing"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260531_model_price_pricing_style_test.go b/internal/repository/migration/test/20260531_model_price_pricing_style_test.go
+index 58b53e8..b3e3315 100644
+--- a/internal/repository/migration/test/20260531_model_price_pricing_style_test.go
++++ b/internal/repository/migration/test/20260531_model_price_pricing_style_test.go
+@@ -4,7 +4,7 @@ import (
+ 	"path/filepath"
+ 	"testing"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260601_backfill_claude_usage_tokens_test.go b/internal/repository/migration/test/20260601_backfill_claude_usage_tokens_test.go
+index 40ce649..2abc315 100644
+--- a/internal/repository/migration/test/20260601_backfill_claude_usage_tokens_test.go
++++ b/internal/repository/migration/test/20260601_backfill_claude_usage_tokens_test.go
+@@ -4,7 +4,7 @@ import (
+ 	"path/filepath"
+ 	"testing"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260602_usage_event_executor_type_test.go b/internal/repository/migration/test/20260602_usage_event_executor_type_test.go
+index cb71d16..99c132f 100644
+--- a/internal/repository/migration/test/20260602_usage_event_executor_type_test.go
++++ b/internal/repository/migration/test/20260602_usage_event_executor_type_test.go
+@@ -4,7 +4,7 @@ import (
+ 	"path/filepath"
+ 	"testing"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260605_backfill_gemini_codex_token_format_test.go b/internal/repository/migration/test/20260605_backfill_gemini_codex_token_format_test.go
+index ecb52cb..fc01027 100644
+--- a/internal/repository/migration/test/20260605_backfill_gemini_codex_token_format_test.go
++++ b/internal/repository/migration/test/20260605_backfill_gemini_codex_token_format_test.go
+@@ -6,7 +6,7 @@ import (
+ 	"time"
+ 
+ 	"cpa-usage-keeper/internal/entities"
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260610_remove_usage_event_write_heavy_indexes_test.go b/internal/repository/migration/test/20260610_remove_usage_event_write_heavy_indexes_test.go
+index d9d6321..f2d63ab 100644
+--- a/internal/repository/migration/test/20260610_remove_usage_event_write_heavy_indexes_test.go
++++ b/internal/repository/migration/test/20260610_remove_usage_event_write_heavy_indexes_test.go
+@@ -4,7 +4,7 @@ import (
+ 	"path/filepath"
+ 	"testing"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260611_remove_usage_event_low_value_indexes_test.go b/internal/repository/migration/test/20260611_remove_usage_event_low_value_indexes_test.go
+index 3e7419c..67436bb 100644
+--- a/internal/repository/migration/test/20260611_remove_usage_event_low_value_indexes_test.go
++++ b/internal/repository/migration/test/20260611_remove_usage_event_low_value_indexes_test.go
+@@ -4,7 +4,7 @@ import (
+ 	"path/filepath"
+ 	"testing"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/20260612_redis_inbox_source_test.go b/internal/repository/migration/test/20260612_redis_inbox_source_test.go
+index c26336a..9610e91 100644
+--- a/internal/repository/migration/test/20260612_redis_inbox_source_test.go
++++ b/internal/repository/migration/test/20260612_redis_inbox_source_test.go
+@@ -4,7 +4,7 @@ import (
+ 	"path/filepath"
+ 	"testing"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/execution_usage_recovery_test.go b/internal/repository/migration/test/execution_usage_recovery_test.go
+index bdcc24f..ff3ecc5 100644
+--- a/internal/repository/migration/test/execution_usage_recovery_test.go
++++ b/internal/repository/migration/test/execution_usage_recovery_test.go
+@@ -14,7 +14,7 @@ import (
+ 	"cpa-usage-keeper/internal/entities"
+ 	"cpa-usage-keeper/internal/repository"
+ 	"cpa-usage-keeper/internal/repository/migration"
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ 	"gorm.io/gorm/logger"
+ )
+diff --git a/internal/repository/migration/test/migration_fixtures_test.go b/internal/repository/migration/test/migration_fixtures_test.go
+index 339bb96..14fd5a9 100644
+--- a/internal/repository/migration/test/migration_fixtures_test.go
++++ b/internal/repository/migration/test/migration_fixtures_test.go
+@@ -5,7 +5,7 @@ import (
+ 	"testing"
+ 
+ 	"cpa-usage-keeper/internal/repository/migration"
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/migration_seed_test.go b/internal/repository/migration/test/migration_seed_test.go
+index cab6824..9c19df8 100644
+--- a/internal/repository/migration/test/migration_seed_test.go
++++ b/internal/repository/migration/test/migration_seed_test.go
+@@ -6,7 +6,7 @@ import (
+ 
+ 	"cpa-usage-keeper/internal/cpa"
+ 	"cpa-usage-keeper/internal/entities"
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/migration_support_test.go b/internal/repository/migration/test/migration_support_test.go
+index a7a3369..227de8f 100644
+--- a/internal/repository/migration/test/migration_support_test.go
++++ b/internal/repository/migration/test/migration_support_test.go
+@@ -8,8 +8,8 @@ import (
+ 	"testing"
+ 
+ 	"cpa-usage-keeper/internal/entities"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"github.com/sirupsen/logrus"
+-	"gorm.io/driver/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/migration_test.go b/internal/repository/migration/test/migration_test.go
+index 58b8b78..d17951e 100644
+--- a/internal/repository/migration/test/migration_test.go
++++ b/internal/repository/migration/test/migration_test.go
+@@ -12,8 +12,8 @@ import (
+ 	"time"
+ 
+ 	"cpa-usage-keeper/internal/entities"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"github.com/sirupsen/logrus"
+-	"gorm.io/driver/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+@@ -294,7 +294,7 @@ func TestRunRollsBackAndLogsSchemaMigrationErrors(t *testing.T) {
+ 		"version=20260620_create_auth_sessions",
+ 		"level=error",
+ 		"msg=\"schema migration failed\"",
+-		"error=\"forced record failure\"",
++		"error=\"constraint failed: forced record failure (1811)\"",
+ 	} {
+ 		if !strings.Contains(content, want) {
+ 			t.Fatalf("expected migration error logs to contain %q, got:\n%s", want, content)
+diff --git a/internal/repository/migration/test/model_price_rules_test.go b/internal/repository/migration/test/model_price_rules_test.go
+index a248af1..6c001d1 100644
+--- a/internal/repository/migration/test/model_price_rules_test.go
++++ b/internal/repository/migration/test/model_price_rules_test.go
+@@ -12,7 +12,7 @@ import (
+ 	"cpa-usage-keeper/internal/repository"
+ 	"cpa-usage-keeper/internal/repository/migration"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/quota_history_rebuild_test.go b/internal/repository/migration/test/quota_history_rebuild_test.go
+index fb6d44b..6c15ac1 100644
+--- a/internal/repository/migration/test/quota_history_rebuild_test.go
++++ b/internal/repository/migration/test/quota_history_rebuild_test.go
+@@ -8,7 +8,7 @@ import (
+ 	"cpa-usage-keeper/internal/entities"
+ 	"cpa-usage-keeper/internal/repository/migration"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/quota_history_reset_test.go b/internal/repository/migration/test/quota_history_reset_test.go
+index 9ba08ae..778f34a 100644
+--- a/internal/repository/migration/test/quota_history_reset_test.go
++++ b/internal/repository/migration/test/quota_history_reset_test.go
+@@ -15,8 +15,8 @@ import (
+ 	"cpa-usage-keeper/internal/repository"
+ 	"cpa-usage-keeper/internal/repository/migration"
+ 
+-	_ "github.com/mattn/go-sqlite3"
+ 	"gorm.io/gorm"
++	_ "modernc.org/sqlite"
+ )
+ 
+ const quotaHistoryResetMigrationVersion = "20260827_reset_quota_history"
+@@ -128,7 +128,7 @@ func assertQuotaHistoryResetVersion(t *testing.T, db *gorm.DB, want int64) {
+ 
+ func assertQuotaHistoryResetBackupRows(t *testing.T, path string, cycles, segments int64) {
+ 	t.Helper()
+-	db, err := sql.Open("sqlite3", path)
++	db, err := sql.Open("sqlite", path)
+ 	if err != nil {
+ 		t.Fatalf("open migration backup: %v", err)
+ 	}
+diff --git a/internal/repository/migration/test/usage_activity_migration_test.go b/internal/repository/migration/test/usage_activity_migration_test.go
+index 6430fba..0a7f3ce 100644
+--- a/internal/repository/migration/test/usage_activity_migration_test.go
++++ b/internal/repository/migration/test/usage_activity_migration_test.go
+@@ -11,7 +11,7 @@ import (
+ 	"cpa-usage-keeper/internal/repository/migration"
+ 	"cpa-usage-keeper/internal/timeutil"
+ 
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/usage_event_response_model_test.go b/internal/repository/migration/test/usage_event_response_model_test.go
+index 7e9bfee..d0d9ea6 100644
+--- a/internal/repository/migration/test/usage_event_response_model_test.go
++++ b/internal/repository/migration/test/usage_event_response_model_test.go
+@@ -5,7 +5,7 @@ import (
+ 	"testing"
+ 
+ 	"cpa-usage-keeper/internal/repository/migration"
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/usage_event_stream_status_code_test.go b/internal/repository/migration/test/usage_event_stream_status_code_test.go
+index d9880c2..a682a4e 100644
+--- a/internal/repository/migration/test/usage_event_stream_status_code_test.go
++++ b/internal/repository/migration/test/usage_event_stream_status_code_test.go
+@@ -5,7 +5,7 @@ import (
+ 	"testing"
+ 
+ 	"cpa-usage-keeper/internal/repository/migration"
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/migration/test/usage_identity_stats_reset_test.go b/internal/repository/migration/test/usage_identity_stats_reset_test.go
+index 3bfa9cd..135f624 100644
+--- a/internal/repository/migration/test/usage_identity_stats_reset_test.go
++++ b/internal/repository/migration/test/usage_identity_stats_reset_test.go
+@@ -9,7 +9,7 @@ import (
+ 	"cpa-usage-keeper/internal/entities"
+ 	"cpa-usage-keeper/internal/repository"
+ 	"cpa-usage-keeper/internal/repository/migration"
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/pricing_legacy_functions_purego.go b/internal/repository/pricing_legacy_functions_purego.go
+new file mode 100644
+index 0000000..63dac42
+--- /dev/null
++++ b/internal/repository/pricing_legacy_functions_purego.go
+@@ -0,0 +1,62 @@
++//go:build !sqlite_trace
++
++package repository
++
++import (
++	"database/sql/driver"
++	"fmt"
++	"time"
++
++	"cpa-usage-keeper/internal/entities"
++	"cpa-usage-keeper/internal/overview"
++	"cpa-usage-keeper/internal/sqlite"
++	"cpa-usage-keeper/internal/timeutil"
++	"gorm.io/gorm"
++	moderncsqlite "modernc.org/sqlite"
++)
++
++func init() {
++	if err := sqlite.RegisterDeterministicScalarFunction("pricing_overview_bucket", 2, pricingOverviewBucketFunction); err != nil {
++		panic(err)
++	}
++	if err := sqlite.RegisterDeterministicScalarFunction("pricing_overview_instant", 1, pricingOverviewInstantFunction); err != nil {
++		panic(err)
++	}
++}
++
++func registerPricingLegacyFunctions(*gorm.DB) error {
++	return nil
++}
++
++func pricingOverviewBucketFunction(_ *moderncsqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
++	value, ok := args[0].(string)
++	if !ok {
++		return nil, fmt.Errorf("pricing_overview_bucket expects TEXT, got %T", args[0])
++	}
++	daily, ok := args[1].(int64)
++	if !ok {
++		return nil, fmt.Errorf("pricing_overview_bucket expects INTEGER, got %T", args[1])
++	}
++	timestamp, err := timeutil.ParseStorageTime(value)
++	if err != nil {
++		return nil, err
++	}
++	hour, day := overview.BucketKeysForEvent(entities.UsageEvent{Timestamp: timestamp})
++	bucket := hour.BucketStart
++	if daily != 0 {
++		bucket = day.BucketStart
++	}
++	return bucket.UTC().Format(time.RFC3339Nano), nil
++}
++
++func pricingOverviewInstantFunction(_ *moderncsqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
++	value, ok := args[0].(string)
++	if !ok {
++		return nil, fmt.Errorf("pricing_overview_instant expects TEXT, got %T", args[0])
++	}
++	timestamp, err := timeutil.ParseStorageTime(value)
++	if err != nil {
++		return nil, err
++	}
++	return timestamp.UTC().Format(time.RFC3339Nano), nil
++}
+diff --git a/internal/repository/pricing_legacy_functions_trace.go b/internal/repository/pricing_legacy_functions_trace.go
+new file mode 100644
+index 0000000..5bd2309
+--- /dev/null
++++ b/internal/repository/pricing_legacy_functions_trace.go
+@@ -0,0 +1,50 @@
++//go:build sqlite_trace
++
++package repository
++
++import (
++	"database/sql"
++	"fmt"
++	"time"
++
++	"cpa-usage-keeper/internal/entities"
++	"cpa-usage-keeper/internal/overview"
++	"cpa-usage-keeper/internal/timeutil"
++	"github.com/mattn/go-sqlite3"
++	"gorm.io/gorm"
++)
++
++func registerPricingLegacyFunctions(db *gorm.DB) error {
++	conn, ok := db.Statement.ConnPool.(*sql.Conn)
++	if !ok {
++		return fmt.Errorf("pricing M6 requires a pinned SQL connection")
++	}
++	return conn.Raw(func(raw any) error {
++		sqliteConn, ok := raw.(*sqlite3.SQLiteConn)
++		if !ok {
++			return fmt.Errorf("pricing M6 requires a SQLite connection")
++		}
++		if err := sqliteConn.RegisterFunc("pricing_overview_bucket", func(value string, daily bool) (string, error) {
++			timestamp, err := timeutil.ParseStorageTime(value)
++			if err != nil {
++				return "", err
++			}
++			hour, day := overview.BucketKeysForEvent(entities.UsageEvent{Timestamp: timestamp})
++			bucket := hour.BucketStart
++			if daily {
++				bucket = day.BucketStart
++			}
++			return bucket.UTC().Format(time.RFC3339Nano), nil
++		}, true); err != nil {
++			return err
++		}
++		// 已存桶是写入公式产出的 instant；午夜跳时可能使它落在前一日，不能再次归日。
++		return sqliteConn.RegisterFunc("pricing_overview_instant", func(value string) (string, error) {
++			timestamp, err := timeutil.ParseStorageTime(value)
++			if err != nil {
++				return "", err
++			}
++			return timestamp.UTC().Format(time.RFC3339Nano), nil
++		}, true)
++	})
++}
+diff --git a/internal/repository/pricing_legacy_protection.go b/internal/repository/pricing_legacy_protection.go
+index 0cdc4a9..243c60b 100644
+--- a/internal/repository/pricing_legacy_protection.go
++++ b/internal/repository/pricing_legacy_protection.go
+@@ -15,7 +15,7 @@ import (
+ 	"cpa-usage-keeper/internal/entities"
+ 	"cpa-usage-keeper/internal/helper"
+ 	"cpa-usage-keeper/internal/pricing"
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ 	"gorm.io/plugin/dbresolver"
+ )
+diff --git a/internal/repository/pricing_legacy_validation.go b/internal/repository/pricing_legacy_validation.go
+index 25283d9..daaa954 100644
+--- a/internal/repository/pricing_legacy_validation.go
++++ b/internal/repository/pricing_legacy_validation.go
+@@ -8,12 +8,8 @@ import (
+ 	"slices"
+ 	"strconv"
+ 	"strings"
+-	"time"
+ 
+ 	"cpa-usage-keeper/internal/entities"
+-	"cpa-usage-keeper/internal/overview"
+-	"cpa-usage-keeper/internal/timeutil"
+-	"github.com/mattn/go-sqlite3"
+ 	"gorm.io/gorm"
+ )
+ 
+@@ -84,39 +80,8 @@ func VerifyLegacyPricingData(ctx context.Context, reader *gorm.DB, baseline Pric
+ 	}
+ 	if err := reader.WithContext(ctx).Connection(func(db *gorm.DB) error {
+ 		// SQLite 分组使用 Go 的存储时间解析与 Overview 分桶，避免 SQL 日期函数丢失项目时区或纳秒精度。
+-		// 函数与查询固定在同一只读连接；不注册全局 driver，也不改写原始时间。
+-		conn, ok := db.Statement.ConnPool.(*sql.Conn)
+-		if !ok {
+-			return fmt.Errorf("pricing M6 requires a pinned SQL connection")
+-		}
+-		if err := conn.Raw(func(raw any) error {
+-			sqliteConn, ok := raw.(*sqlite3.SQLiteConn)
+-			if !ok {
+-				return fmt.Errorf("pricing M6 requires a SQLite connection")
+-			}
+-			if err := sqliteConn.RegisterFunc("pricing_overview_bucket", func(value string, daily bool) (string, error) {
+-				timestamp, err := timeutil.ParseStorageTime(value)
+-				if err != nil {
+-					return "", err
+-				}
+-				hour, day := overview.BucketKeysForEvent(entities.UsageEvent{Timestamp: timestamp})
+-				bucket := hour.BucketStart
+-				if daily {
+-					bucket = day.BucketStart
+-				}
+-				return bucket.UTC().Format(time.RFC3339Nano), nil
+-			}, true); err != nil {
+-				return err
+-			}
+-			// 已存桶是写入公式产出的 instant；午夜跳时可能使它落在前一日，不能再次归日。
+-			return sqliteConn.RegisterFunc("pricing_overview_instant", func(value string) (string, error) {
+-				timestamp, err := timeutil.ParseStorageTime(value)
+-				if err != nil {
+-					return "", err
+-				}
+-				return timestamp.UTC().Format(time.RFC3339Nano), nil
+-			}, true)
+-		}); err != nil {
++		// 函数与查询固定在同一只读连接，不改写原始时间。
++		if err := registerPricingLegacyFunctions(db); err != nil {
+ 			return fmt.Errorf("register pricing M6 bucket function: %w", err)
+ 		}
+ 		for _, table := range []string{"usage_overview_hourly_stats", "usage_overview_daily_stats"} {
+diff --git a/internal/repository/test/db_test.go b/internal/repository/test/db_test.go
+index 84ff89f..dd10d15 100644
+--- a/internal/repository/test/db_test.go
++++ b/internal/repository/test/db_test.go
+@@ -203,7 +203,7 @@ func TestOpenDatabaseRejectsFileWhenVFSDoesNotEnableWAL(t *testing.T) {
+ func TestOpenDatabaseClosesPoolWhenMigrationInitializationFails(t *testing.T) {
+ 	// 准备：构造一个 schema_migrations 结构损坏的旧库，让 writer 在成功打开并取得独占锁后稳定进入迁移失败分支。
+ 	dbPath := filepath.Join(t.TempDir(), "migration-failure.db")
+-	seedDB, err := sql.Open("sqlite3", dbPath)
++	seedDB, err := sql.Open("sqlite", dbPath)
+ 	if err != nil {
+ 		t.Fatalf("open migration failure seed database: %v", err)
+ 	}
+@@ -226,7 +226,7 @@ func TestOpenDatabaseClosesPoolWhenMigrationInitializationFails(t *testing.T) {
+ 	}
+ 
+ 	// 断言：失败 writer 必须已经关闭，新连接才能立即修复表结构；如果池泄漏，这里会返回 database is locked。
+-	verificationDB, err := sql.Open("sqlite3", dbPath+"?_busy_timeout=50")
++	verificationDB, err := sql.Open("sqlite", dbPath+"?_busy_timeout=50")
+ 	if err != nil {
+ 		t.Fatalf("open database after failed initialization: %v", err)
+ 	}
+diff --git a/internal/repository/test/dbresolver_test.go b/internal/repository/test/dbresolver_test.go
+index 6db115d..b487076 100644
+--- a/internal/repository/test/dbresolver_test.go
++++ b/internal/repository/test/dbresolver_test.go
+@@ -11,7 +11,7 @@ import (
+ )
+ 
+ func TestOpenDatabaseUsesPinnedSQLiteVersion(t *testing.T) {
+-	// 准备：通过项目正式数据库入口打开全新文件，版本必须来自本次固定的 go-sqlite3 依赖。
++	// 准备：通过项目正式数据库入口打开全新文件，版本必须来自本次固定的 modernc SQLite 依赖。
+ 	db := openTestDatabase(t)
+ 
+ 	// 执行：直接读取驱动内嵌的 SQLite core 版本，不依赖系统 sqlite3 命令。
+@@ -21,8 +21,8 @@ func TestOpenDatabaseUsesPinnedSQLiteVersion(t *testing.T) {
+ 	}
+ 
+ 	// 断言：v1.14.48 固定内嵌 SQLite 3.53.3，防止依赖解析意外回退到旧 WAL bug 版本。
+-	if version != "3.53.3" {
+-		t.Fatalf("expected SQLite 3.53.3 from go-sqlite3 v1.14.48, got %q", version)
++	if version != "3.54.1" {
++		t.Fatalf("expected SQLite 3.54.1 from modernc.org/sqlite v1.61.0, got %q", version)
+ 	}
+ }
+ 
+diff --git a/internal/repository/test/pricing_legacy_conversion_test.go b/internal/repository/test/pricing_legacy_conversion_test.go
+index bb10f89..b99ca40 100644
+--- a/internal/repository/test/pricing_legacy_conversion_test.go
++++ b/internal/repository/test/pricing_legacy_conversion_test.go
+@@ -13,8 +13,8 @@ import (
+ 	"cpa-usage-keeper/internal/helper"
+ 	"cpa-usage-keeper/internal/repository"
+ 	"cpa-usage-keeper/internal/repository/migration"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"cpa-usage-keeper/internal/timeutil"
+-	"gorm.io/driver/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/repository/test/pricing_legacy_prices_test.go b/internal/repository/test/pricing_legacy_prices_test.go
+index 16d23dd..84e8cf2 100644
+--- a/internal/repository/test/pricing_legacy_prices_test.go
++++ b/internal/repository/test/pricing_legacy_prices_test.go
+@@ -9,7 +9,7 @@ import (
+ 	"cpa-usage-keeper/internal/entities"
+ 	"cpa-usage-keeper/internal/pricing"
+ 	"cpa-usage-keeper/internal/repository"
+-	"gorm.io/driver/sqlite"
++	"cpa-usage-keeper/internal/sqlite"
+ 	"gorm.io/gorm"
+ )
+ 
+diff --git a/internal/sqlite/sqlite_purego.go b/internal/sqlite/sqlite_purego.go
+new file mode 100644
+index 0000000..e0a1004
+--- /dev/null
++++ b/internal/sqlite/sqlite_purego.go
+@@ -0,0 +1,40 @@
++//go:build !sqlite_trace
++
++package sqlite
++
++import (
++	"database/sql"
++	"database/sql/driver"
++	"strings"
++
++	gormsqlite "gorm.io/driver/sqlite"
++	"gorm.io/gorm"
++	moderncsqlite "modernc.org/sqlite"
++)
++
++const DriverName = "cpa_sqlite"
++
++type Config = gormsqlite.Config
++
++var pureGoDriver = &moderncsqlite.Driver{}
++
++func init() {
++	sql.Register(DriverName, pureGoDriver)
++}
++
++func Open(dsn string) gorm.Dialector {
++	separator := "?"
++	if strings.Contains(dsn, "?") {
++		separator = "&"
++	}
++	return New(Config{DSN: dsn + separator + "_busy_timeout=5000&_inttotime=1&_time_format=sqlite"})
++}
++
++func New(config Config) gorm.Dialector {
++	config.DriverName = DriverName
++	return gormsqlite.New(config)
++}
++
++func RegisterDeterministicScalarFunction(name string, argCount int32, function func(*moderncsqlite.FunctionContext, []driver.Value) (driver.Value, error)) error {
++	return pureGoDriver.RegisterDeterministicScalarFunction(name, argCount, function)
++}
+diff --git a/internal/sqlite/sqlite_trace.go b/internal/sqlite/sqlite_trace.go
+new file mode 100644
+index 0000000..fde161e
+--- /dev/null
++++ b/internal/sqlite/sqlite_trace.go
+@@ -0,0 +1,20 @@
++//go:build sqlite_trace
++
++package sqlite
++
++import (
++	gormsqlite "gorm.io/driver/sqlite"
++	"gorm.io/gorm"
++)
++
++const DriverName = gormsqlite.DriverName
++
++type Config = gormsqlite.Config
++
++func Open(dsn string) gorm.Dialector {
++	return gormsqlite.Open(dsn)
++}
++
++func New(config Config) gorm.Dialector {
++	return gormsqlite.New(config)
++}

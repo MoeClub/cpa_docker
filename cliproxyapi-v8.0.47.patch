@@ -1,0 +1,2064 @@
+diff --git a/internal/api/server_routes.go b/internal/api/server_routes.go
+index bb02a01..8ad390d 100644
+--- a/internal/api/server_routes.go
++++ b/internal/api/server_routes.go
+@@ -931,9 +931,11 @@ func (s *Server) handleHomeModels(c *gin.Context) {
+ 			"id":     entry.id,
+ 			"object": "model",
+ 		}
+-		if entry.created > 0 {
+-			model["created"] = entry.created
++		created := entry.created
++		if created <= 0 {
++			created = 0
+ 		}
++		model["created"] = created
+ 		if entry.ownedBy != "" {
+ 			model["owned_by"] = entry.ownedBy
+ 		}
+diff --git a/internal/client/codex/models/default_reasoning_level_test.go b/internal/client/codex/models/default_reasoning_level_test.go
+new file mode 100644
+index 0000000..189213b
+--- /dev/null
++++ b/internal/client/codex/models/default_reasoning_level_test.go
+@@ -0,0 +1,65 @@
++package models
++
++import (
++	"testing"
++
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
++)
++
++func TestCodexClientModelsUsesConfiguredDefaultReasoningLevel(t *testing.T) {
++	resp := BuildResponseForClient([]map[string]any{{
++		"id": "ctyun-default-level-test",
++		"thinking": &registry.ThinkingSupport{
++			Levels:       []string{"low", "high", "max"},
++			DefaultLevel: "max",
++			CodexLevelMap: []registry.CodexLevelMapping{
++				{Codex: "xhigh", Level: "max"},
++				{Codex: "ultra", Level: "max"},
++			},
++		},
++	}}, nil, false, "0.163.0-alpha.10.2")
++
++	models, ok := resp["models"].([]map[string]any)
++	if !ok || len(models) != 1 {
++		t.Fatalf("models = %#v, want one model", resp["models"])
++	}
++	if got := stringModelValue(models[0], "default_reasoning_level"); got != "ultra" {
++		t.Fatalf("default_reasoning_level = %q, want ultra", got)
++	}
++
++	rawLevels, ok := models[0]["supported_reasoning_levels"].([]any)
++	if !ok || len(rawLevels) != 4 {
++		t.Fatalf("supported_reasoning_levels = %#v, want four levels", models[0]["supported_reasoning_levels"])
++	}
++	wantLevels := []string{"low", "high", "xhigh", "ultra"}
++	for i, want := range wantLevels {
++		levelEntry, ok := rawLevels[i].(map[string]any)
++		if !ok {
++			t.Fatalf("supported_reasoning_levels[%d] = %#v, want object", i, rawLevels[i])
++		}
++		if got := stringModelValue(levelEntry, "effort"); got != want {
++			t.Fatalf("supported_reasoning_levels[%d].effort = %q, want %q", i, got, want)
++		}
++	}
++}
++
++func TestCodexClientModelsPreservesUnmappedDefaultReasoningLevel(t *testing.T) {
++	resp := BuildResponseForClient([]map[string]any{{
++		"id": "ctyun-unmapped-default-level-test",
++		"thinking": &registry.ThinkingSupport{
++			Levels:       []string{"low", "high", "max"},
++			DefaultLevel: "low",
++			CodexLevelMap: []registry.CodexLevelMapping{
++				{Codex: "xhigh", Level: "max"},
++			},
++		},
++	}}, nil, false, "0.163.0-alpha.10.2")
++
++	models, ok := resp["models"].([]map[string]any)
++	if !ok || len(models) != 1 {
++		t.Fatalf("models = %#v, want one model", resp["models"])
++	}
++	if got := stringModelValue(models[0], "default_reasoning_level"); got != "low" {
++		t.Fatalf("default_reasoning_level = %q, want low", got)
++	}
++}
+diff --git a/internal/client/codex/models/models.go b/internal/client/codex/models/models.go
+index d15faca..31d331a 100644
+--- a/internal/client/codex/models/models.go
++++ b/internal/client/codex/models/models.go
+@@ -811,11 +811,14 @@ func applyCodexClientThinkingMetadata(entry map[string]any, thinking *registry.T
+ 		return
+ 	}
+ 
+-	levels := make([]any, 0, len(thinking.Levels))
+-	defaultLevel := ""
++	catalogMappings := codexCatalogMappings(thinking)
++	catalogDefaultLevel := catalogDefaultFromThinking(thinking)
++
++	levels := make([]any, 0, len(catalogMappings))
++	defaultLevel := normalizeCodexClientReasoningLevel(catalogDefaultLevel, clientVersion)
+ 	firstLevel := ""
+-	for _, rawLevel := range thinking.Levels {
+-		level := normalizeCodexClientReasoningLevel(rawLevel, clientVersion)
++	for _, mapping := range catalogMappings {
++		level := normalizeCodexClientReasoningLevel(mapping.Codex, clientVersion)
+ 		if level == "" {
+ 			continue
+ 		}
+@@ -843,6 +846,81 @@ func applyCodexClientThinkingMetadata(entry map[string]any, thinking *registry.T
+ 	entry["default_reasoning_level"] = defaultLevel
+ }
+ 
++func codexCatalogMappings(thinking *registry.ThinkingSupport) []registry.CodexLevelMapping {
++	if thinking == nil {
++		return nil
++	}
++	if len(thinking.Levels) == 0 {
++		return thinking.CodexLevelMap
++	}
++	if len(thinking.CodexLevelMap) == 0 {
++		identity := make([]registry.CodexLevelMapping, 0, len(thinking.Levels))
++		for _, level := range thinking.Levels {
++			identity = append(identity, registry.CodexLevelMapping{Codex: level, Level: level})
++		}
++		return identity
++	}
++
++	aliasesByLevel := make(map[string][]string, len(thinking.CodexLevelMap))
++	for _, mapping := range thinking.CodexLevelMap {
++		level := strings.ToLower(strings.TrimSpace(mapping.Level))
++		alias := strings.TrimSpace(mapping.Codex)
++		if level == "" || alias == "" {
++			continue
++		}
++		aliasesByLevel[level] = append(aliasesByLevel[level], alias)
++	}
++
++	mappings := make([]registry.CodexLevelMapping, 0, len(thinking.Levels)+len(thinking.CodexLevelMap))
++	seen := make(map[string]struct{}, len(thinking.Levels)+len(thinking.CodexLevelMap))
++	for _, rawLevel := range thinking.Levels {
++		level := strings.ToLower(strings.TrimSpace(rawLevel))
++		if level == "" {
++			continue
++		}
++		if aliases, exists := aliasesByLevel[level]; exists && len(aliases) > 0 {
++			for _, alias := range aliases {
++				if _, duplicate := seen[alias]; duplicate {
++					continue
++				}
++				seen[alias] = struct{}{}
++				mappings = append(mappings, registry.CodexLevelMapping{Codex: alias, Level: level})
++			}
++			continue
++		}
++		if _, duplicate := seen[level]; duplicate {
++			continue
++		}
++		seen[level] = struct{}{}
++		mappings = append(mappings, registry.CodexLevelMapping{Codex: level, Level: level})
++	}
++	return mappings
++}
++
++func catalogDefaultFromThinking(thinking *registry.ThinkingSupport) string {
++	if thinking == nil {
++		return ""
++	}
++	if len(thinking.CodexLevelMap) == 0 {
++		return thinking.DefaultLevel
++	}
++	defaultLevel := strings.ToLower(strings.TrimSpace(thinking.DefaultLevel))
++	if defaultLevel != "" {
++		for index := len(thinking.CodexLevelMap) - 1; index >= 0; index-- {
++			mapping := thinking.CodexLevelMap[index]
++			if strings.EqualFold(strings.TrimSpace(mapping.Level), defaultLevel) {
++				return mapping.Codex
++			}
++		}
++		for _, level := range thinking.Levels {
++			if strings.EqualFold(strings.TrimSpace(level), defaultLevel) {
++				return defaultLevel
++			}
++		}
++	}
++	return thinking.CodexLevelMap[len(thinking.CodexLevelMap)-1].Codex
++}
++
+ func sanitizeCodexClientReasoningMetadata(entry map[string]any, clientVersion string) {
+ 	rawLevels, ok := entry["supported_reasoning_levels"].([]any)
+ 	if !ok {
+diff --git a/internal/registry/model_registry.go b/internal/registry/model_registry.go
+index 7f82e7d..5dc233c 100644
+--- a/internal/registry/model_registry.go
++++ b/internal/registry/model_registry.go
+@@ -156,6 +156,19 @@ type ThinkingSupport struct {
+ 	// Levels defines discrete reasoning effort levels (e.g., "low", "medium", "high").
+ 	// When set, the model uses level-based reasoning instead of token budgets.
+ 	Levels []string `json:"levels,omitempty" yaml:"levels,omitempty"`
++	// DefaultLevel optionally selects the catalog default from Levels.
++	// Empty uses the first non-none level, preferring medium when present.
++	DefaultLevel string `json:"default-level,omitempty" yaml:"default-level,omitempty"`
++	// CodexLevelMap optionally maps Codex-visible effort aliases to provider
++	// levels. Order is preserved for model-catalog display. Empty disables
++	// aliasing and advertises Levels directly.
++	CodexLevelMap []CodexLevelMapping `json:"codex-level-map,omitempty" yaml:"codex-level-map,omitempty"`
++}
++
++// CodexLevelMapping maps one Codex-visible effort name to a provider level.
++type CodexLevelMapping struct {
++	Codex string `json:"codex" yaml:"codex"`
++	Level string `json:"level" yaml:"level"`
+ }
+ 
+ // ModelRegistration tracks a model's availability
+@@ -1870,14 +1883,16 @@ func (r *ModelRegistry) convertModelToMap(model *ModelInfo, handlerType string)
+ 
+ 	switch handlerType {
+ 	case "openai":
++		created := model.Created
++		if created <= 0 {
++			created = 0
++		}
+ 		result := map[string]any{
+ 			"id":       model.ID,
+ 			"object":   "model",
++			"created":  created,
+ 			"owned_by": model.OwnedBy,
+ 		}
+-		if model.Created > 0 {
+-			result["created"] = model.Created
+-		}
+ 		if model.Type != "" {
+ 			result["type"] = model.Type
+ 		}
+diff --git a/internal/runtime/executor/helps/ctyun_reasoning_repair.go b/internal/runtime/executor/helps/ctyun_reasoning_repair.go
+new file mode 100644
+index 0000000..1f56e39
+--- /dev/null
++++ b/internal/runtime/executor/helps/ctyun_reasoning_repair.go
+@@ -0,0 +1,617 @@
++package helps
++
++import (
++	"bufio"
++	"bytes"
++	"context"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
++	"net/url"
++	"strings"
++	"sync"
++
++	"github.com/tidwall/gjson"
++	"github.com/tidwall/sjson"
++)
++
++const (
++	ctyunReasoningRepairAttempts = 2
++	ctyunReasoningLoopAnchor     = 64
++	ctyunReasoningHoldback       = 8192
++	ctyunReasoningScannerMax     = 52_428_800
++)
++
++// CTYunReasoningContinuation starts a hidden continuation request from a
++// de-duplicated reasoning checkpoint. repairAttempt starts at one.
++type CTYunReasoningContinuation func(ctx context.Context, checkpoint string, repairAttempt int) (io.ReadCloser, error)
++
++type ctyunRepairReadCloser struct {
++	*io.PipeReader
++	cancel context.CancelFunc
++	once   sync.Once
++}
++
++func (r *ctyunRepairReadCloser) Close() error {
++	if r == nil {
++		return nil
++	}
++	r.once.Do(r.cancel)
++	return r.PipeReader.Close()
++}
++
++// IsCTYunOpenAICompatibilityBaseURL reports whether baseURL targets CTYun's
++// CP OpenAI-compatible endpoint. Detection is domain-only so gateways that
++// merely reuse the upstream path are not treated as CTYun.
++func IsCTYunOpenAICompatibilityBaseURL(baseURL string) bool {
++	parsed, errParse := url.Parse(strings.TrimSpace(baseURL))
++	if errParse != nil {
++		return false
++	}
++	return strings.EqualFold(parsed.Hostname(), "eaichat.ctyun.cn")
++}
++
++// BuildCTYunReasoningContinuationPayload appends one assistant checkpoint and
++// one internal continuation instruction to an already translated Chat
++// Completions payload. Payload rules must be applied after this function.
++func BuildCTYunReasoningContinuationPayload(base []byte, checkpoint string, repairAttempt int) ([]byte, error) {
++	if !gjson.GetBytes(base, "messages").IsArray() {
++		return nil, errors.New("ctyun reasoning continuation requires a messages array")
++	}
++	checkpoint = strings.TrimSpace(checkpoint)
++	if checkpoint == "" {
++		return nil, errors.New("ctyun reasoning continuation requires a non-empty checkpoint")
++	}
++	if repairAttempt > 1 {
++		// The first checkpoint continuation did not converge. Do not feed the
++		// growing reasoning back again: replace it with a compact reset marker so
++		// the original conversation remains intact without reinforcing the loop.
++		checkpoint = "Earlier reasoning attempts were incomplete and must not be continued or repeated."
++	}
++
++	assistant, errMarshal := json.Marshal(map[string]any{
++		"role":              "assistant",
++		"content":           "",
++		"reasoning_content": checkpoint,
++	})
++	if errMarshal != nil {
++		return nil, fmt.Errorf("marshal CTYun reasoning checkpoint: %w", errMarshal)
++	}
++	instruction := "Continue from the reasoning checkpoint without restarting or repeating it. Resolve the remaining work and now produce the final answer or required tool call."
++	if repairAttempt > 1 {
++		instruction = "The previous reasoning did not converge. Discard it, solve the original request with a different concise approach, and now produce the final answer or required tool call. Do not narrate further analysis."
++	}
++	user, errMarshal := json.Marshal(map[string]any{"role": "user", "content": instruction})
++	if errMarshal != nil {
++		return nil, fmt.Errorf("marshal CTYun continuation instruction: %w", errMarshal)
++	}
++
++	out, errSet := sjson.SetRawBytes(bytes.Clone(base), "messages.-1", assistant)
++	if errSet != nil {
++		return nil, fmt.Errorf("append CTYun reasoning checkpoint: %w", errSet)
++	}
++	out, errSet = sjson.SetRawBytes(out, "messages.-1", user)
++	if errSet != nil {
++		return nil, fmt.Errorf("append CTYun continuation instruction: %w", errSet)
++	}
++	return out, nil
++}
++
++// NewCTYunReasoningRepairStream combines reasoning-only truncated CTYun
++// streams into one downstream stream. A reasoning tail is held back so
++// repeated loops can be removed before they are visible.
++func NewCTYunReasoningRepairStream(ctx context.Context, initial io.ReadCloser, continueRequest CTYunReasoningContinuation) io.ReadCloser {
++	if initial == nil || continueRequest == nil {
++		return initial
++	}
++	streamCtx, cancel := context.WithCancel(ctx)
++	reader, writer := io.Pipe()
++	out := &ctyunRepairReadCloser{PipeReader: reader, cancel: cancel}
++	go func() {
++		defer cancel()
++		state := &ctyunReasoningRepairState{}
++		source := initial
++		for repairs := 0; ; {
++			result := processCTYunReasoningAttempt(streamCtx, source, writer, state, repairs)
++			_ = source.Close()
++			if result.err != nil {
++				_ = writer.CloseWithError(result.err)
++				return
++			}
++			if result.terminal {
++				_ = writer.Close()
++				return
++			}
++			if !result.repair || repairs >= ctyunReasoningRepairAttempts {
++				if errFallback := state.emitIncomplete(writer); errFallback != nil {
++					_ = writer.CloseWithError(errFallback)
++				} else {
++					_ = writer.Close()
++				}
++				return
++			}
++
++			state.finishAttempt()
++			repairs++
++			next, errContinue := continueRequest(streamCtx, state.checkpoint(), repairs)
++			if errContinue != nil || next == nil {
++				if errFallback := state.emitIncomplete(writer); errFallback != nil {
++					_ = writer.CloseWithError(errFallback)
++				} else {
++					_ = writer.Close()
++				}
++				return
++			}
++			source = next
++		}
++	}()
++	return out
++}
++
++type ctyunReasoningAttemptResult struct {
++	repair   bool
++	terminal bool
++	err      error
++}
++
++type ctyunReasoningRepairState struct {
++	completedReasoning []string
++	currentReasoning   strings.Builder
++	reasoningTemplate  []byte
++	finishTemplate     []byte
++	roleEmitted        bool
++	visibleOutput      bool
++	flushedReasoning   bool
++	emittedReasoning   string
++	usage              ctyunUsageAccumulator
++}
++
++func (s *ctyunReasoningRepairState) appendReasoning(text string) bool {
++	if text == "" {
++		return false
++	}
++	s.currentReasoning.WriteString(text)
++	_, removed := collapseRepeatedReasoning(s.currentReasoning.String())
++	return removed > 0
++}
++
++func (s *ctyunReasoningRepairState) finishAttempt() {
++	current, _ := collapseRepeatedReasoning(s.currentReasoning.String())
++	if current != "" {
++		s.completedReasoning = append(s.completedReasoning, current)
++	}
++	s.currentReasoning.Reset()
++}
++
++func (s *ctyunReasoningRepairState) checkpoint() string {
++	parts := append([]string(nil), s.completedReasoning...)
++	current, _ := collapseRepeatedReasoning(s.currentReasoning.String())
++	if current != "" {
++		parts = append(parts, current)
++	}
++	checkpoint := ""
++	for _, part := range parts {
++		checkpoint = mergeReasoningOverlap(checkpoint, part)
++	}
++	checkpoint, _ = collapseRepeatedReasoning(checkpoint)
++	return strings.TrimSpace(checkpoint)
++}
++
++func (s *ctyunReasoningRepairState) emitReasoning(writer io.Writer, final bool) error {
++	if s.flushedReasoning {
++		return nil
++	}
++	checkpoint := s.checkpoint()
++	if checkpoint == "" || len(s.reasoningTemplate) == 0 {
++		s.flushedReasoning = final
++		return nil
++	}
++	checkpointRunes := []rune(checkpoint)
++	emittedRunes := []rune(s.emittedReasoning)
++	if !strings.HasPrefix(checkpoint, s.emittedReasoning) {
++		// A loop longer than the holdback may overlap text already emitted. It
++		// cannot be retracted, so retain that finite prefix while still removing
++		// all later copies from the continuation checkpoint.
++		common := commonReasoningPrefix(emittedRunes, checkpointRunes)
++		checkpointRunes = append(append([]rune(nil), emittedRunes...), checkpointRunes[common:]...)
++	}
++	end := len(checkpointRunes)
++	if !final {
++		end -= ctyunReasoningHoldback
++		if end <= len(emittedRunes) {
++			return nil
++		}
++	}
++	if end <= len(emittedRunes) {
++		s.flushedReasoning = final
++		return nil
++	}
++	segment := string(checkpointRunes[len(emittedRunes):end])
++	payload := bytes.Clone(s.reasoningTemplate)
++	delta, errMarshal := json.Marshal(map[string]any{"reasoning_content": segment})
++	if errMarshal != nil {
++		return errMarshal
++	}
++	payload, _ = sjson.SetRawBytes(payload, "choices.0.delta", delta)
++	payload, _ = sjson.SetRawBytes(payload, "choices.0.finish_reason", []byte("null"))
++	payload, _ = sjson.DeleteBytes(payload, "usage")
++	if errFrame := writeCTYunDataFrame(writer, payload); errFrame != nil {
++		return errFrame
++	}
++	s.emittedReasoning = string(checkpointRunes[:end])
++	s.flushedReasoning = final
++	return nil
++}
++
++func (s *ctyunReasoningRepairState) emitIncomplete(writer io.Writer) error {
++	if errReasoning := s.emitReasoning(writer, true); errReasoning != nil {
++		return errReasoning
++	}
++	payload := bytes.Clone(s.finishTemplate)
++	if len(payload) == 0 {
++		payload = bytes.Clone(s.reasoningTemplate)
++		payload, _ = sjson.SetRawBytes(payload, "choices.0.delta", []byte(`{}`))
++		payload, _ = sjson.SetBytes(payload, "choices.0.finish_reason", "length")
++	}
++	payload = s.usage.apply(payload)
++	if errFrame := writeCTYunDataFrame(writer, payload); errFrame != nil {
++		return errFrame
++	}
++	return writeCTYunDone(writer)
++}
++
++func processCTYunReasoningAttempt(ctx context.Context, source io.Reader, writer io.Writer, state *ctyunReasoningRepairState, repairs int) ctyunReasoningAttemptResult {
++	scanner := bufio.NewScanner(source)
++	scanner.Buffer(nil, ctyunReasoningScannerMax)
++	var dataLines [][]byte
++	pendingRepair := false
++	var pendingFinal []byte
++
++	processPayload := func(payload []byte) (stop bool, result ctyunReasoningAttemptResult) {
++		payload = bytes.TrimSpace(payload)
++		if bytes.Equal(payload, []byte("[DONE]")) {
++			if pendingRepair {
++				return true, ctyunReasoningAttemptResult{repair: true}
++			}
++			if len(pendingFinal) == 0 && !state.visibleOutput && state.checkpoint() != "" {
++				if repairs < ctyunReasoningRepairAttempts {
++					return true, ctyunReasoningAttemptResult{repair: true}
++				}
++				return true, ctyunReasoningAttemptResult{terminal: true, err: state.emitIncomplete(writer)}
++			}
++			if len(pendingFinal) > 0 {
++				if errReasoning := state.emitReasoning(writer, true); errReasoning != nil {
++					return true, ctyunReasoningAttemptResult{err: errReasoning}
++				}
++				if errFrame := writeCTYunDataFrame(writer, state.usage.apply(pendingFinal)); errFrame != nil {
++					return true, ctyunReasoningAttemptResult{err: errFrame}
++				}
++			}
++			if errDone := writeCTYunDone(writer); errDone != nil {
++				return true, ctyunReasoningAttemptResult{err: errDone}
++			}
++			return true, ctyunReasoningAttemptResult{terminal: true}
++		}
++		if !json.Valid(payload) {
++			return true, ctyunReasoningAttemptResult{err: errors.New("invalid CTYun SSE data frame")}
++		}
++
++		state.usage.observe(payload)
++		if pendingRepair || len(pendingFinal) > 0 {
++			return false, ctyunReasoningAttemptResult{}
++		}
++
++		delta := gjson.GetBytes(payload, "choices.0.delta")
++		reasoning := delta.Get("reasoning_content").String()
++		if reasoning == "" {
++			reasoning = delta.Get("reasoning").String()
++		}
++		hasContent := delta.Get("content").String() != "" || delta.Get("refusal").String() != ""
++		hasTools := len(delta.Get("tool_calls").Array()) > 0
++		if reasoning != "" && !state.flushedReasoning {
++			if len(state.reasoningTemplate) == 0 {
++				state.reasoningTemplate = bytes.Clone(payload)
++			}
++			looping := state.appendReasoning(reasoning)
++			stripped, roleOnly := stripCTYunReasoningDelta(payload)
++			if roleOnly && !state.roleEmitted {
++				if errFrame := writeCTYunDataFrame(writer, stripped); errFrame != nil {
++					return true, ctyunReasoningAttemptResult{err: errFrame}
++				}
++				state.roleEmitted = true
++			}
++			if looping && !hasContent && !hasTools {
++				if repairs < ctyunReasoningRepairAttempts {
++					return true, ctyunReasoningAttemptResult{repair: true}
++				}
++				return true, ctyunReasoningAttemptResult{terminal: true, err: state.emitIncomplete(writer)}
++			}
++			if !hasContent && !hasTools {
++				if errReasoning := state.emitReasoning(writer, false); errReasoning != nil {
++					return true, ctyunReasoningAttemptResult{err: errReasoning}
++				}
++				return false, ctyunReasoningAttemptResult{}
++			}
++			payload = stripped
++		}
++
++		if hasContent || hasTools {
++			if errReasoning := state.emitReasoning(writer, true); errReasoning != nil {
++				return true, ctyunReasoningAttemptResult{err: errReasoning}
++			}
++			state.visibleOutput = true
++		}
++
++		finishReason := strings.TrimSpace(gjson.GetBytes(payload, "choices.0.finish_reason").String())
++		if finishReason != "" {
++			state.finishTemplate = bytes.Clone(payload)
++			if finishReason == "length" && !state.visibleOutput && state.checkpoint() != "" {
++				if repairs < ctyunReasoningRepairAttempts {
++					pendingRepair = true
++					return false, ctyunReasoningAttemptResult{}
++				}
++				pendingFinal = bytes.Clone(payload)
++				return false, ctyunReasoningAttemptResult{}
++			}
++			pendingFinal = bytes.Clone(payload)
++			return false, ctyunReasoningAttemptResult{}
++		}
++
++		if len(gjson.GetBytes(payload, "choices").Array()) == 0 && gjson.GetBytes(payload, "usage").Exists() {
++			return false, ctyunReasoningAttemptResult{}
++		}
++		if delta.Get("role").String() != "" && !state.roleEmitted {
++			state.roleEmitted = true
++		} else if delta.Get("role").String() != "" && repairs > 0 {
++			return false, ctyunReasoningAttemptResult{}
++		}
++		if errFrame := writeCTYunDataFrame(writer, payload); errFrame != nil {
++			return true, ctyunReasoningAttemptResult{err: errFrame}
++		}
++		return false, ctyunReasoningAttemptResult{}
++	}
++
++	processFrame := func() (bool, ctyunReasoningAttemptResult) {
++		if len(dataLines) == 0 {
++			return false, ctyunReasoningAttemptResult{}
++		}
++		payload := bytes.TrimSpace(bytes.Join(dataLines, []byte("\n")))
++		dataLines = nil
++		return processPayload(payload)
++	}
++
++	for scanner.Scan() {
++		select {
++		case <-ctx.Done():
++			return ctyunReasoningAttemptResult{err: ctx.Err()}
++		default:
++		}
++		line := bytes.TrimSpace(scanner.Bytes())
++		if len(line) == 0 {
++			if stop, result := processFrame(); stop {
++				return result
++			}
++			continue
++		}
++		if bytes.HasPrefix(line, []byte("data:")) {
++			dataLines = append(dataLines, bytes.Clone(bytes.TrimSpace(line[len("data:"):])))
++		}
++	}
++	if len(dataLines) > 0 {
++		if stop, result := processFrame(); stop {
++			return result
++		}
++	}
++	if pendingRepair || (!state.visibleOutput && state.checkpoint() != "") {
++		if repairs < ctyunReasoningRepairAttempts {
++			return ctyunReasoningAttemptResult{repair: true}
++		}
++		return ctyunReasoningAttemptResult{terminal: true, err: state.emitIncomplete(writer)}
++	}
++	if len(pendingFinal) > 0 {
++		if errReasoning := state.emitReasoning(writer, true); errReasoning != nil {
++			return ctyunReasoningAttemptResult{err: errReasoning}
++		}
++		if errFrame := writeCTYunDataFrame(writer, state.usage.apply(pendingFinal)); errFrame != nil {
++			return ctyunReasoningAttemptResult{err: errFrame}
++		}
++		if errDone := writeCTYunDone(writer); errDone != nil {
++			return ctyunReasoningAttemptResult{err: errDone}
++		}
++		return ctyunReasoningAttemptResult{terminal: true}
++	}
++	if errScan := scanner.Err(); errScan != nil {
++		return ctyunReasoningAttemptResult{err: errScan}
++	}
++	return ctyunReasoningAttemptResult{err: io.ErrUnexpectedEOF}
++}
++
++func stripCTYunReasoningDelta(payload []byte) ([]byte, bool) {
++	out, _ := sjson.DeleteBytes(bytes.Clone(payload), "choices.0.delta.reasoning_content")
++	out, _ = sjson.DeleteBytes(out, "choices.0.delta.reasoning")
++	delta := gjson.GetBytes(out, "choices.0.delta")
++	roleOnly := delta.Get("role").String() != "" && len(delta.Map()) == 1
++	return out, roleOnly
++}
++
++func writeCTYunDataFrame(writer io.Writer, payload []byte) error {
++	_, errWrite := fmt.Fprintf(writer, "data: %s\n\n", payload)
++	return errWrite
++}
++
++func writeCTYunDone(writer io.Writer) error {
++	_, errWrite := io.WriteString(writer, "data: [DONE]\n\n")
++	return errWrite
++}
++
++type ctyunUsageAccumulator struct {
++	value map[string]any
++}
++
++func (a *ctyunUsageAccumulator) observe(payload []byte) {
++	usageNode := gjson.GetBytes(payload, "usage")
++	if !usageNode.Exists() || usageNode.Type != gjson.JSON {
++		return
++	}
++	var incoming map[string]any
++	if errUnmarshal := json.Unmarshal([]byte(usageNode.Raw), &incoming); errUnmarshal != nil {
++		return
++	}
++	if a.value == nil {
++		a.value = make(map[string]any, len(incoming))
++	}
++	mergeCTYunUsage(a.value, incoming)
++}
++
++func (a *ctyunUsageAccumulator) apply(payload []byte) []byte {
++	if len(a.value) == 0 || len(payload) == 0 {
++		return payload
++	}
++	usageJSON, errMarshal := json.Marshal(a.value)
++	if errMarshal != nil {
++		return payload
++	}
++	out, errSet := sjson.SetRawBytes(bytes.Clone(payload), "usage", usageJSON)
++	if errSet != nil {
++		return payload
++	}
++	return out
++}
++
++func mergeCTYunUsage(dst, src map[string]any) {
++	for key, incoming := range src {
++		switch typed := incoming.(type) {
++		case float64:
++			if existing, ok := dst[key].(float64); ok {
++				dst[key] = existing + typed
++			} else {
++				dst[key] = typed
++			}
++		case map[string]any:
++			nested, ok := dst[key].(map[string]any)
++			if !ok {
++				nested = make(map[string]any, len(typed))
++				dst[key] = nested
++			}
++			mergeCTYunUsage(nested, typed)
++		default:
++			dst[key] = incoming
++		}
++	}
++}
++
++func collapseRepeatedReasoning(text string) (string, int) {
++	source := []rune(text)
++	if len(source) < ctyunReasoningLoopAnchor*3 {
++		return text, 0
++	}
++	out := make([]rune, 0, len(source))
++	positions := make(map[uint64][]int)
++	removed := 0
++	for index := 0; index < len(source); {
++		if index+ctyunReasoningLoopAnchor <= len(source) {
++			hash := hashReasoningRunes(source[index : index+ctyunReasoningLoopAnchor])
++			candidates := positions[hash]
++			matchedEnd := index
++			for candidateIndex := len(candidates) - 1; candidateIndex >= 0; candidateIndex-- {
++				previous := candidates[candidateIndex]
++				period := index - previous
++				if period < ctyunReasoningLoopAnchor || index+period+ctyunReasoningLoopAnchor > len(source) {
++					continue
++				}
++				end := index
++				for end < len(source) && source[end] == source[previous+(end-index)%period] {
++					end++
++				}
++				if end-index >= period+ctyunReasoningLoopAnchor {
++					matchedEnd = end
++					break
++				}
++			}
++			if matchedEnd > index {
++				removed += matchedEnd - index
++				index = matchedEnd
++				continue
++			}
++			positions[hash] = appendLimitedReasoningPosition(candidates, index)
++		}
++		out = append(out, source[index])
++		index++
++	}
++	return string(out), removed
++}
++
++func appendLimitedReasoningPosition(existing []int, position int) []int {
++	const maxCandidates = 8
++	if len(existing) >= maxCandidates {
++		copy(existing, existing[len(existing)-maxCandidates+1:])
++		existing = existing[:maxCandidates-1]
++	}
++	return append(existing, position)
++}
++
++func hashReasoningRunes(value []rune) uint64 {
++	const (
++		offset = uint64(1469598103934665603)
++		prime  = uint64(1099511628211)
++	)
++	hash := offset
++	for _, current := range value {
++		hash ^= uint64(current)
++		hash *= prime
++	}
++	return hash
++}
++
++func mergeReasoningOverlap(previous, next string) string {
++	if previous == "" {
++		return next
++	}
++	if next == "" {
++		return previous
++	}
++	left := []rune(previous)
++	right := []rune(next)
++	sequence := make([]int64, 0, len(right)+1+len(left))
++	for _, current := range right {
++		sequence = append(sequence, int64(current))
++	}
++	sequence = append(sequence, -1)
++	for _, current := range left {
++		sequence = append(sequence, int64(current))
++	}
++	prefix := make([]int, len(sequence))
++	for index := 1; index < len(sequence); index++ {
++		candidate := prefix[index-1]
++		for candidate > 0 && sequence[index] != sequence[candidate] {
++			candidate = prefix[candidate-1]
++		}
++		if sequence[index] == sequence[candidate] {
++			candidate++
++		}
++		prefix[index] = candidate
++	}
++	overlap := prefix[len(prefix)-1]
++	if overlap < ctyunReasoningLoopAnchor || overlap > len(right) {
++		separator := "\n"
++		if len(left) > 0 && len(right) > 0 && (left[len(left)-1] == '\n' || right[0] == '\n') {
++			separator = ""
++		}
++		return previous + separator + next
++	}
++	return string(append(left, right[overlap:]...))
++}
++
++func commonReasoningPrefix(left, right []rune) int {
++	limit := len(left)
++	if len(right) < limit {
++		limit = len(right)
++	}
++	for index := 0; index < limit; index++ {
++		if left[index] != right[index] {
++			return index
++		}
++	}
++	return limit
++}
+diff --git a/internal/runtime/executor/helps/ctyun_reasoning_repair_test.go b/internal/runtime/executor/helps/ctyun_reasoning_repair_test.go
+new file mode 100644
+index 0000000..4143129
+--- /dev/null
++++ b/internal/runtime/executor/helps/ctyun_reasoning_repair_test.go
+@@ -0,0 +1,297 @@
++package helps
++
++import (
++	"context"
++	"encoding/json"
++	"errors"
++	"io"
++	"strings"
++	"testing"
++
++	"github.com/tidwall/gjson"
++)
++
++func TestCollapseRepeatedReasoningRemovesLongLoopAndKeepsFirstCopy(t *testing.T) {
++	block := "reasoning checkpoint starts with alpha, advances through beta, verifies gamma, and records the final delta before continuing. "
++	input := "prefix\n" + block + block + block + block[:100]
++	got, removed := collapseRepeatedReasoning(input)
++	if removed == 0 {
++		t.Fatal("expected repeated reasoning to be removed")
++	}
++	if got != "prefix\n"+block {
++		t.Fatalf("collapsed reasoning mismatch\ngot:  %q\nwant: %q", got, "prefix\n"+block)
++	}
++}
++
++func TestIsCTYunOpenAICompatibilityBaseURL(t *testing.T) {
++	if !IsCTYunOpenAICompatibilityBaseURL("https://eaichat.ctyun.cn/ai/platform/v2/cp") {
++		t.Fatal("expected CTYun domain match")
++	}
++	if !IsCTYunOpenAICompatibilityBaseURL("https://EAICHAT.CTYUN.CN") {
++		t.Fatal("expected CTYun domain match to be case-insensitive")
++	}
++	if IsCTYunOpenAICompatibilityBaseURL("http://127.0.0.1:8080/ai/platform/v2/cp") {
++		t.Fatal("path-only base URL without the CTYun domain matched CTYun")
++	}
++	if IsCTYunOpenAICompatibilityBaseURL("https://example.com/v1") {
++		t.Fatal("unrelated OpenAI-compatible base URL matched CTYun")
++	}
++}
++
++func TestCollapseRepeatedReasoningLeavesShortLegitimateRepetition(t *testing.T) {
++	input := "compare A with A, then compare B with B"
++	got, removed := collapseRepeatedReasoning(input)
++	if removed != 0 || got != input {
++		t.Fatalf("short repetition changed: removed=%d got=%q", removed, got)
++	}
++}
++
++func TestBuildCTYunReasoningContinuationPayload(t *testing.T) {
++	base := []byte(`{"model":"deepseek-v4.1-flash","messages":[{"role":"user","content":"solve"}],"tools":[{"type":"function","function":{"name":"lookup"}}],"max_completion_tokens":64}`)
++	out, errBuild := BuildCTYunReasoningContinuationPayload(base, "known checkpoint", 1)
++	if errBuild != nil {
++		t.Fatal(errBuild)
++	}
++	if got := gjson.GetBytes(out, "messages.#").Int(); got != 3 {
++		t.Fatalf("messages count = %d, want 3: %s", got, out)
++	}
++	if got := gjson.GetBytes(out, "messages.1.reasoning_content").String(); got != "known checkpoint" {
++		t.Fatalf("checkpoint = %q: %s", got, out)
++	}
++	if got := gjson.GetBytes(out, "messages.2.role").String(); got != "user" {
++		t.Fatalf("continuation role = %q: %s", got, out)
++	}
++	if got := gjson.GetBytes(out, "tools.0.function.name").String(); got != "lookup" {
++		t.Fatalf("tools were not preserved: %s", out)
++	}
++	if got := gjson.GetBytes(out, "max_completion_tokens").Int(); got != 64 {
++		t.Fatalf("continuation changed max_completion_tokens = %d, want 64: %s", got, out)
++	}
++
++	second, errBuild := BuildCTYunReasoningContinuationPayload(base, strings.Repeat("looping analysis ", 1000), 2)
++	if errBuild != nil {
++		t.Fatal(errBuild)
++	}
++	if got := gjson.GetBytes(second, "messages.1.reasoning_content").String(); got != "Earlier reasoning attempts were incomplete and must not be continued or repeated." {
++		t.Fatalf("second continuation did not compact the failed reasoning: %q", got)
++	}
++}
++
++func TestCTYunReasoningRepairStreamContinuesLengthWithoutExposingIncomplete(t *testing.T) {
++	first := strings.Join([]string{
++		`data: {"id":"first","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
++		`data: {"id":"first","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"reasoning_content":"establish the invariant and reduce the remaining case"},"finish_reason":null}]}`,
++		`data: {"id":"first","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{},"finish_reason":"length"}],"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30,"completion_tokens_details":{"reasoning_tokens":20}}}`,
++		`data: [DONE]`,
++	}, "\n\n") + "\n\n"
++	second := strings.Join([]string{
++		`data: {"id":"second","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
++		`data: {"id":"second","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"reasoning_content":"therefore the result follows"},"finish_reason":null}]}`,
++		`data: {"id":"second","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"content":"Final answer: 21"},"finish_reason":null}]}`,
++		`data: {"id":"second","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":40,"completion_tokens":5,"total_tokens":45,"completion_tokens_details":{"reasoning_tokens":3}}}`,
++		`data: [DONE]`,
++	}, "\n\n") + "\n\n"
++
++	continuations := 0
++	var checkpoint string
++	repaired := NewCTYunReasoningRepairStream(context.Background(), io.NopCloser(strings.NewReader(first)), func(_ context.Context, got string, attempt int) (io.ReadCloser, error) {
++		continuations++
++		checkpoint = got
++		if attempt != 1 {
++			t.Fatalf("repair attempt = %d, want 1", attempt)
++		}
++		return io.NopCloser(strings.NewReader(second)), nil
++	})
++	output, errRead := io.ReadAll(repaired)
++	if errRead != nil {
++		t.Fatal(errRead)
++	}
++	if continuations != 1 {
++		t.Fatalf("continuations = %d, want 1", continuations)
++	}
++	if checkpoint != "establish the invariant and reduce the remaining case" {
++		t.Fatalf("checkpoint = %q", checkpoint)
++	}
++	stream := string(output)
++	if strings.Contains(stream, `"finish_reason":"length"`) {
++		t.Fatalf("intermediate length leaked downstream: %s", stream)
++	}
++	if strings.Count(stream, "data: [DONE]") != 1 || !strings.Contains(stream, "Final answer: 21") {
++		t.Fatalf("unexpected repaired stream: %s", stream)
++	}
++	if got := gjson.GetBytes(lastCTYunJSONFrame(output), "usage.prompt_tokens").Int(); got != 50 {
++		t.Fatalf("aggregate prompt tokens = %d, want 50: %s", got, stream)
++	}
++	if got := gjson.GetBytes(lastCTYunJSONFrame(output), "usage.completion_tokens").Int(); got != 25 {
++		t.Fatalf("aggregate completion tokens = %d, want 25: %s", got, stream)
++	}
++}
++
++func TestCTYunReasoningRepairStreamRemovesLoopBeforeContinuation(t *testing.T) {
++	block := "The cycle starts by deriving alpha, then validates beta against gamma, records delta, and returns to the exact same starting state. "
++	firstReasoning := block + block + block
++	first := "data: {\"id\":\"loop\",\"object\":\"chat.completion.chunk\",\"model\":\"deepseek-v4.1-flash\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"reasoning_content\":" + quotedJSON(firstReasoning) + "},\"finish_reason\":null}]}\n\n"
++	second := strings.Join([]string{
++		`data: {"id":"done","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"content":"done"},"finish_reason":null}]}`,
++		`data: {"id":"done","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
++		`data: [DONE]`,
++	}, "\n\n") + "\n\n"
++
++	var checkpoint string
++	repaired := NewCTYunReasoningRepairStream(context.Background(), io.NopCloser(strings.NewReader(first)), func(_ context.Context, got string, _ int) (io.ReadCloser, error) {
++		checkpoint = got
++		return io.NopCloser(strings.NewReader(second)), nil
++	})
++	output, errRead := io.ReadAll(repaired)
++	if errRead != nil {
++		t.Fatal(errRead)
++	}
++	wantCheckpoint := strings.TrimSpace(block)
++	if checkpoint != wantCheckpoint {
++		t.Fatalf("loop checkpoint was not collapsed\ngot:  %q\nwant: %q", checkpoint, wantCheckpoint)
++	}
++	if strings.Count(string(output), wantCheckpoint) != 1 {
++		t.Fatalf("loop appeared downstream more than once: %s", output)
++	}
++}
++
++func TestCTYunReasoningRepairStreamBoundsRepeatedLengthRepairs(t *testing.T) {
++	attemptStream := func(id string) string {
++		return strings.Join([]string{
++			`data: {"id":"` + id + `","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
++			`data: {"id":"` + id + `","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"reasoning_content":"still unresolved on ` + id + `"},"finish_reason":null}]}`,
++			`data: {"id":"` + id + `","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{},"finish_reason":"length"}]}`,
++			`data: [DONE]`,
++		}, "\n\n") + "\n\n"
++	}
++	continuations := 0
++	repaired := NewCTYunReasoningRepairStream(context.Background(), io.NopCloser(strings.NewReader(attemptStream("one"))), func(_ context.Context, _ string, attempt int) (io.ReadCloser, error) {
++		continuations++
++		return io.NopCloser(strings.NewReader(attemptStream([]string{"two", "three"}[attempt-1]))), nil
++	})
++	output, errRead := io.ReadAll(repaired)
++	if errRead != nil {
++		t.Fatal(errRead)
++	}
++	stream := string(output)
++	if continuations != ctyunReasoningRepairAttempts {
++		t.Fatalf("continuations = %d, want %d", continuations, ctyunReasoningRepairAttempts)
++	}
++	if strings.Count(stream, `"finish_reason":"length"`) != 1 || strings.Count(stream, "data: [DONE]") != 1 {
++		t.Fatalf("bounded fallback must emit one incomplete terminal: %s", stream)
++	}
++}
++
++func TestCTYunReasoningRepairStreamBoundsReasoningDoneWithoutFinish(t *testing.T) {
++	attemptStream := func(id string) string {
++		return strings.Join([]string{
++			`data: {"id":"` + id + `","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
++			`data: {"id":"` + id + `","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"reasoning_content":"unfinished reasoning on ` + id + `"},"finish_reason":null}]}`,
++			`data: [DONE]`,
++		}, "\n\n") + "\n\n"
++	}
++	continuations := 0
++	repaired := NewCTYunReasoningRepairStream(context.Background(), io.NopCloser(strings.NewReader(attemptStream("one"))), func(_ context.Context, _ string, attempt int) (io.ReadCloser, error) {
++		continuations++
++		return io.NopCloser(strings.NewReader(attemptStream([]string{"two", "three"}[attempt-1]))), nil
++	})
++	output, errRead := io.ReadAll(repaired)
++	if errRead != nil {
++		t.Fatal(errRead)
++	}
++	stream := string(output)
++	if continuations != ctyunReasoningRepairAttempts {
++		t.Fatalf("continuations = %d, want %d", continuations, ctyunReasoningRepairAttempts)
++	}
++	if strings.Count(stream, `"finish_reason":"length"`) != 1 || strings.Count(stream, "data: [DONE]") != 1 {
++		t.Fatalf("reasoning-only done fallback must emit one incomplete terminal: %s", stream)
++	}
++}
++
++func TestCTYunReasoningRepairStreamDoesNotRetryPartialToolCall(t *testing.T) {
++	stream := strings.Join([]string{
++		`data: {"id":"tool","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
++		`data: {"id":"tool","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"reasoning_content":"call the tool"},"finish_reason":null}]}`,
++		`data: {"id":"tool","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{\"query\":"}}]},"finish_reason":null}]}`,
++		`data: {"id":"tool","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{},"finish_reason":"length"}]}`,
++		`data: [DONE]`,
++	}, "\n\n") + "\n\n"
++	continuations := 0
++	repaired := NewCTYunReasoningRepairStream(context.Background(), io.NopCloser(strings.NewReader(stream)), func(_ context.Context, _ string, _ int) (io.ReadCloser, error) {
++		continuations++
++		return nil, nil
++	})
++	output, errRead := io.ReadAll(repaired)
++	if errRead != nil {
++		t.Fatal(errRead)
++	}
++	if continuations != 0 {
++		t.Fatalf("partial tool call triggered %d continuation requests", continuations)
++	}
++	if !strings.Contains(string(output), `"finish_reason":"length"`) || !strings.Contains(string(output), `"name":"lookup"`) {
++		t.Fatalf("partial tool call was not preserved as incomplete: %s", output)
++	}
++}
++
++func TestCTYunReasoningRepairStreamContinuesReasoningOnlyEOF(t *testing.T) {
++	first := strings.Join([]string{
++		`data: {"id":"eof","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
++		`data: {"id":"eof","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"reasoning_content":"checkpoint before transport EOF"},"finish_reason":null}]}`,
++	}, "\n\n") + "\n\n"
++	second := strings.Join([]string{
++		`data: {"id":"done","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"content":"recovered"},"finish_reason":null}]}`,
++		`data: {"id":"done","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
++		`data: [DONE]`,
++	}, "\n\n") + "\n\n"
++	continuations := 0
++	repaired := NewCTYunReasoningRepairStream(context.Background(), io.NopCloser(strings.NewReader(first)), func(_ context.Context, checkpoint string, _ int) (io.ReadCloser, error) {
++		continuations++
++		if checkpoint != "checkpoint before transport EOF" {
++			t.Fatalf("checkpoint = %q", checkpoint)
++		}
++		return io.NopCloser(strings.NewReader(second)), nil
++	})
++	output, errRead := io.ReadAll(repaired)
++	if errRead != nil {
++		t.Fatal(errRead)
++	}
++	if continuations != 1 || !strings.Contains(string(output), "recovered") {
++		t.Fatalf("reasoning-only EOF was not repaired: continuations=%d stream=%s", continuations, output)
++	}
++}
++
++func TestCTYunReasoningRepairStreamContinuationFailureFallsBackToIncomplete(t *testing.T) {
++	first := strings.Join([]string{
++		`data: {"id":"first","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
++		`data: {"id":"first","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"reasoning_content":"checkpoint before failed continuation"},"finish_reason":null}]}`,
++		`data: {"id":"first","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{},"finish_reason":"length"}]}`,
++		`data: [DONE]`,
++	}, "\n\n") + "\n\n"
++	repaired := NewCTYunReasoningRepairStream(context.Background(), io.NopCloser(strings.NewReader(first)), func(context.Context, string, int) (io.ReadCloser, error) {
++		return nil, errors.New("continuation unavailable")
++	})
++	output, errRead := io.ReadAll(repaired)
++	if errRead != nil {
++		t.Fatal(errRead)
++	}
++	stream := string(output)
++	if strings.Count(stream, `"finish_reason":"length"`) != 1 || strings.Count(stream, "data: [DONE]") != 1 {
++		t.Fatalf("continuation failure did not fall back to one incomplete terminal: %s", stream)
++	}
++}
++
++func lastCTYunJSONFrame(stream []byte) []byte {
++	var last []byte
++	for _, frame := range strings.Split(string(stream), "\n\n") {
++		data, ok := strings.CutPrefix(strings.TrimSpace(frame), "data: ")
++		if ok && data != "[DONE]" && gjson.Valid(data) {
++			last = []byte(data)
++		}
++	}
++	return last
++}
++
++func quotedJSON(value string) string {
++	encoded, _ := json.Marshal(value)
++	return string(encoded)
++}
+diff --git a/internal/runtime/executor/openai_compat_ctyun_reasoning_repair_test.go b/internal/runtime/executor/openai_compat_ctyun_reasoning_repair_test.go
+new file mode 100644
+index 0000000..51dedaa
+--- /dev/null
++++ b/internal/runtime/executor/openai_compat_ctyun_reasoning_repair_test.go
+@@ -0,0 +1,192 @@
++package executor
++
++import (
++	"context"
++	"io"
++	"net/http"
++	"net/http/httptest"
++	"net/url"
++	"strings"
++	"sync"
++	"testing"
++
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
++	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
++	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
++	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
++	"github.com/tidwall/gjson"
++)
++
++// ctyunReasoningTestBaseURL keeps the real CTYun domain so the domain-based
++// endpoint detection under test is exercised; requests are routed to the local
++// fixture server by ctyunReasoningTestContext.
++const ctyunReasoningTestBaseURL = "https://eaichat.ctyun.cn/ai/platform/v2/cp"
++
++func ctyunReasoningTestContext(t *testing.T, serverURL string) context.Context {
++	t.Helper()
++	target, errParse := url.Parse(serverURL)
++	if errParse != nil {
++		t.Fatalf("parse fixture server URL: %v", errParse)
++	}
++	roundTripper := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
++		clone := req.Clone(req.Context())
++		clone.URL.Scheme = target.Scheme
++		clone.URL.Host = target.Host
++		clone.Host = target.Host
++		return http.DefaultTransport.RoundTrip(clone)
++	})
++	return context.WithValue(context.Background(), "cliproxy.roundtripper", http.RoundTripper(roundTripper))
++}
++
++func TestOpenAICompatCTYunReasoningLengthRepairsInsideOneResponsesStream(t *testing.T) {
++	var (
++		mu     sync.Mutex
++		bodies [][]byte
++	)
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		body, _ := io.ReadAll(r.Body)
++		mu.Lock()
++		bodies = append(bodies, body)
++		attempt := len(bodies)
++		mu.Unlock()
++
++		w.Header().Set("Content-Type", "text/event-stream")
++		if attempt == 1 {
++			_, _ = io.WriteString(w, strings.Join([]string{
++				`data: {"id":"first","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
++				`data: {"id":"first","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"reasoning_content":"derive the invariant and keep the unresolved final step"},"finish_reason":null}]}`,
++				`data: {"id":"first","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{},"finish_reason":"length"}],"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}}`,
++				`data: [DONE]`,
++			}, "\n\n")+"\n\n")
++			return
++		}
++		_, _ = io.WriteString(w, strings.Join([]string{
++			`data: {"id":"second","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
++			`data: {"id":"second","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"reasoning_content":"complete the final step"},"finish_reason":null}]}`,
++			`data: {"id":"second","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"content":"The answer is 21."},"finish_reason":null}]}`,
++			`data: {"id":"second","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":40,"completion_tokens":5,"total_tokens":45}}`,
++			`data: [DONE]`,
++		}, "\n\n")+"\n\n")
++	}))
++	defer server.Close()
++
++	cfg := &config.Config{}
++	cfg.Payload.Override = []config.PayloadRule{{
++		Models: []config.PayloadModelRule{{Name: "deepseek-v4.1-flash"}},
++		Params: map[string]any{"audit.-1": "once"},
++	}}
++	executor := NewOpenAICompatExecutor("openai-compatibility", cfg)
++	auth := &cliproxyauth.Auth{Attributes: map[string]string{
++		"base_url": ctyunReasoningTestBaseURL,
++		"api_key":  "fixture",
++	}}
++	payload := []byte(`{"model":"deepseek-v4.1-flash","input":[{"role":"user","content":[{"type":"input_text","text":"solve"}]}],"stream":true,"max_output_tokens":64}`)
++	result, errExecute := executor.ExecuteStream(ctyunReasoningTestContext(t, server.URL), auth, cliproxyexecutor.Request{
++		Model: "deepseek-v4.1-flash", Payload: payload,
++	}, cliproxyexecutor.Options{
++		SourceFormat:    sdktranslator.FormatOpenAIResponse,
++		ResponseFormat:  sdktranslator.FormatOpenAIResponse,
++		OriginalRequest: payload,
++		Stream:          true,
++	})
++	if errExecute != nil {
++		t.Fatal(errExecute)
++	}
++	var downstream strings.Builder
++	for chunk := range result.Chunks {
++		if chunk.Err != nil {
++			t.Fatalf("stream error: %v", chunk.Err)
++		}
++		downstream.Write(chunk.Payload)
++	}
++
++	stream := downstream.String()
++	if strings.Contains(stream, "event: response.incomplete") {
++		t.Fatalf("intermediate incomplete leaked downstream: %s", stream)
++	}
++	if strings.Count(stream, "event: response.completed") != 1 {
++		t.Fatalf("completed count mismatch: %s", stream)
++	}
++	if !strings.Contains(stream, "The answer is 21.") {
++		t.Fatalf("final answer missing: %s", stream)
++	}
++
++	mu.Lock()
++	defer mu.Unlock()
++	if len(bodies) != 2 {
++		t.Fatalf("upstream requests = %d, want 2", len(bodies))
++	}
++	continuation := bodies[1]
++	if got := gjson.GetBytes(continuation, "messages.#").Int(); got != 3 {
++		t.Fatalf("continuation messages = %d, want 3: %s", got, continuation)
++	}
++	if got := gjson.GetBytes(continuation, "messages.1.reasoning_content").String(); got != "derive the invariant and keep the unresolved final step" {
++		t.Fatalf("continuation checkpoint = %q: %s", got, continuation)
++	}
++	if got := gjson.GetBytes(continuation, "max_tokens").Int(); got != 64 {
++		t.Fatalf("continuation max_tokens = %d, want 64: %s", got, continuation)
++	}
++	if got := gjson.GetBytes(continuation, "audit.#").Int(); got != 1 {
++		t.Fatalf("payload override applied %d times, want once: %s", got, continuation)
++	}
++}
++
++func TestOpenAICompatCTYunReasoningDoneWithoutFinishEndsAsOneIncomplete(t *testing.T) {
++	var (
++		mu     sync.Mutex
++		bodies [][]byte
++	)
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		body, _ := io.ReadAll(r.Body)
++		mu.Lock()
++		bodies = append(bodies, body)
++		attempt := len(bodies)
++		mu.Unlock()
++
++		w.Header().Set("Content-Type", "text/event-stream")
++		_, _ = io.WriteString(w, strings.Join([]string{
++			`data: {"id":"attempt","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
++			`data: {"id":"attempt","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"reasoning_content":"unfinished attempt ` + string(rune('0'+attempt)) + `"},"finish_reason":null}]}`,
++			`data: [DONE]`,
++		}, "\n\n")+"\n\n")
++	}))
++	defer server.Close()
++
++	executor := NewOpenAICompatExecutor("openai-compatibility", &config.Config{})
++	auth := &cliproxyauth.Auth{Attributes: map[string]string{
++		"base_url": ctyunReasoningTestBaseURL,
++		"api_key":  "fixture",
++	}}
++	payload := []byte(`{"model":"deepseek-v4.1-flash","input":"solve","stream":true,"max_output_tokens":64}`)
++	result, errExecute := executor.ExecuteStream(ctyunReasoningTestContext(t, server.URL), auth, cliproxyexecutor.Request{
++		Model: "deepseek-v4.1-flash", Payload: payload,
++	}, cliproxyexecutor.Options{
++		SourceFormat:    sdktranslator.FormatOpenAIResponse,
++		ResponseFormat:  sdktranslator.FormatOpenAIResponse,
++		OriginalRequest: payload,
++		Stream:          true,
++	})
++	if errExecute != nil {
++		t.Fatal(errExecute)
++	}
++	var downstream strings.Builder
++	for chunk := range result.Chunks {
++		if chunk.Err != nil {
++			t.Fatalf("stream error: %v", chunk.Err)
++		}
++		downstream.Write(chunk.Payload)
++	}
++
++	stream := downstream.String()
++	if strings.Count(stream, "event: response.incomplete") != 1 || strings.Contains(stream, "event: response.completed") || strings.Contains(stream, "event: error") {
++		t.Fatalf("bounded repair must end in one clean incomplete event: %s", stream)
++	}
++	mu.Lock()
++	defer mu.Unlock()
++	if len(bodies) != 3 {
++		t.Fatalf("upstream requests = %d, want 3", len(bodies))
++	}
++	if got := gjson.GetBytes(bodies[2], "messages.1.reasoning_content").String(); got != "Earlier reasoning attempts were incomplete and must not be continued or repeated." {
++		t.Fatalf("second repair did not compact failed reasoning: %q: %s", got, bodies[2])
++	}
++}
+diff --git a/internal/runtime/executor/openai_compat_executor.go b/internal/runtime/executor/openai_compat_executor.go
+index d270f62..a448fed 100644
+--- a/internal/runtime/executor/openai_compat_executor.go
++++ b/internal/runtime/executor/openai_compat_executor.go
+@@ -217,7 +217,7 @@ func (e *OpenAICompatExecutor) executeWithCredentials(ctx context.Context, auth
+ 		b, _ := io.ReadAll(httpResp.Body)
+ 		helps.AppendAPIResponseChunk(ctx, e.cfg, b)
+ 		helps.LogWithRequestID(ctx).Debugf("request error, error status: %d, error message: %s", httpResp.StatusCode, helps.SummarizeErrorBody(httpResp.Header.Get("Content-Type"), b))
+-		err = newOpenAICompatStatusError(httpResp.StatusCode, httpResp.Header, b)
++		err = newOpenAICompatStatusError(httpResp.StatusCode, httpResp.Header, b, baseURL)
+ 		return resp, err
+ 	}
+ 	body, err := io.ReadAll(httpResp.Body)
+@@ -325,7 +325,7 @@ func (e *OpenAICompatExecutor) executeImages(ctx context.Context, auth *cliproxy
+ 
+ 	if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
+ 		helps.LogWithRequestID(ctx).Debugf("request error, error status: %d, error message: %s", httpResp.StatusCode, helps.SummarizeErrorBody(httpResp.Header.Get("Content-Type"), body))
+-		err = newOpenAICompatStatusError(httpResp.StatusCode, httpResp.Header, body)
++		err = newOpenAICompatStatusError(httpResp.StatusCode, httpResp.Header, body, baseURL)
+ 		return resp, err
+ 	}
+ 
+@@ -400,6 +400,7 @@ func (e *OpenAICompatExecutor) executeStreamWithCredentials(ctx context.Context,
+ 	translated = helps.SetBoolIfDifferent(translated, "stream_options.include_usage", true)
+ 
+ 	url := strings.TrimSuffix(baseURL, "/") + "/chat/completions"
++	translatedBeforePayloadConfig := bytes.Clone(translated)
+ 	translated = helps.ApplyPayloadConfigWithRequest(e.cfg, baseModel, to.String(), from.String(), "", translated, originalTranslated, requestedModel, requestPath, opts.Headers)
+ 	reporter.SetTranslatedReasoningEffort(translated, to.String())
+ 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(translated))
+@@ -452,9 +453,58 @@ func (e *OpenAICompatExecutor) executeStreamWithCredentials(ctx context.Context,
+ 		if errClose := httpResp.Body.Close(); errClose != nil {
+ 			log.Errorf("openai compat executor: close response body error: %v", errClose)
+ 		}
+-		err = newOpenAICompatStatusError(httpResp.StatusCode, httpResp.Header, b)
++		err = newOpenAICompatStatusError(httpResp.StatusCode, httpResp.Header, b, baseURL)
+ 		return nil, err
+ 	}
++	if responseFormat == sdktranslator.FormatOpenAIResponse && helps.IsCTYunOpenAICompatibilityBaseURL(baseURL) {
++		continueReasoning := func(continueCtx context.Context, checkpoint string, repairAttempt int) (io.ReadCloser, error) {
++			continuationBase, errBuild := helps.BuildCTYunReasoningContinuationPayload(translatedBeforePayloadConfig, checkpoint, repairAttempt)
++			if errBuild != nil {
++				return nil, errBuild
++			}
++			continuation := helps.ApplyPayloadConfigWithRequest(e.cfg, baseModel, to.String(), from.String(), "", continuationBase, originalTranslated, requestedModel, requestPath, opts.Headers)
++			continueReq, errRequest := http.NewRequestWithContext(continueCtx, http.MethodPost, url, bytes.NewReader(continuation))
++			if errRequest != nil {
++				return nil, errRequest
++			}
++			continueReq.Header.Set("Content-Type", "application/json")
++			if apiKey != "" {
++				continueReq.Header.Set("Authorization", "Bearer "+apiKey)
++			}
++			ensureOpenAICompatUserAgent(continueReq, opts.Headers)
++			util.ApplyCustomHeadersFromAttrs(continueReq, attrs, opts.Headers)
++			continueReq.Header.Set("Accept", "text/event-stream")
++			continueReq.Header.Set("Cache-Control", "no-cache")
++			helps.RecordAPIRequest(continueCtx, e.cfg, helps.UpstreamRequestLog{
++				URL:       url,
++				Method:    http.MethodPost,
++				Headers:   continueReq.Header.Clone(),
++				Body:      continuation,
++				Provider:  e.Identifier(),
++				AuthID:    authID,
++				AuthLabel: authLabel,
++				AuthType:  authType,
++				AuthValue: authValue,
++			})
++
++			continueResp, errContinue := httpClient.Do(continueReq)
++			if errContinue != nil {
++				helps.RecordAPIResponseError(continueCtx, e.cfg, errContinue)
++				return nil, errContinue
++			}
++			helps.RecordAPIResponseMetadata(continueCtx, e.cfg, continueResp.StatusCode, continueResp.Header.Clone())
++			if continueResp.StatusCode < 200 || continueResp.StatusCode >= 300 {
++				body, _ := io.ReadAll(continueResp.Body)
++				helps.AppendAPIResponseChunk(continueCtx, e.cfg, body)
++				if errClose := continueResp.Body.Close(); errClose != nil {
++					log.Errorf("openai compat executor: close CTYun continuation response body error: %v", errClose)
++				}
++				return nil, newOpenAICompatStatusError(continueResp.StatusCode, continueResp.Header, body, baseURL)
++			}
++			return continueResp.Body, nil
++		}
++		httpResp.Body = helps.NewCTYunReasoningRepairStream(ctx, httpResp.Body, continueReasoning)
++	}
+ 	out := make(chan cliproxyexecutor.StreamChunk)
+ 	go func() {
+ 		defer close(out)
+@@ -1155,6 +1205,7 @@ type statusErr struct {
+ 	code               int
+ 	msg                string
+ 	retryAfter         *time.Duration
++	retryAfterFirst    bool
+ 	credentialScoped   bool
+ 	streamTruncated    bool
+ 	transientRateLimit bool
+@@ -1170,7 +1221,10 @@ func (e statusErr) Error() string {
+ }
+ func (e statusErr) StatusCode() int            { return e.code }
+ func (e statusErr) RetryAfter() *time.Duration { return e.retryAfter }
+-func (e statusErr) IsCredentialScoped() bool   { return e.credentialScoped }
++func (e statusErr) RetryAfterBeforeCooldown() bool {
++	return e.retryAfterFirst
++}
++func (e statusErr) IsCredentialScoped() bool { return e.credentialScoped }
+ 
+ // LogDiagnostic lets upstream failure logs explain a sanitized client message.
+ func (e statusErr) LogDiagnostic() string { return e.diagnostic }
+@@ -1183,16 +1237,26 @@ func (e statusErr) IsStreamTruncated() bool { return e.streamTruncated }
+ // that must not be recorded as credential quota exhaustion.
+ func (e statusErr) IsTransientRateLimit() bool { return e.transientRateLimit }
+ 
+-const openAICompatTPMFallbackRetryAfter = time.Minute
++const (
++	openAICompatTPMFallbackRetryAfter      = time.Minute
++	openAICompatCTYun500FallbackRetryAfter = 3 * time.Second
++)
+ 
+-func newOpenAICompatStatusError(status int, headers http.Header, body []byte) statusErr {
++func newOpenAICompatStatusError(status int, headers http.Header, body []byte, baseURL string) statusErr {
+ 	return statusErr{
+-		code:       status,
+-		msg:        string(body),
+-		retryAfter: openAICompatRetryAfter(status, headers, body, time.Now()),
++		code:            status,
++		msg:             string(body),
++		retryAfter:      openAICompatRetryAfter(status, headers, body, time.Now(), baseURL),
++		retryAfterFirst: isOpenAICompatCTYun500(status, baseURL),
+ 	}
+ }
+ 
++// isOpenAICompatCTYun500 detects CTYun's transient upstream 500 from the
++// configured endpoint itself; the error body is not trusted for this decision.
++func isOpenAICompatCTYun500(status int, baseURL string) bool {
++	return status == http.StatusInternalServerError && helps.IsCTYunOpenAICompatibilityBaseURL(baseURL)
++}
++
+ // openAICompatRetryAfter preserves the provider's standard Retry-After signal.
+ // Some OpenAI-compatible providers omit that header for explicit per-minute
+ // token limits; in that narrow case a one-minute fallback prevents immediate
+@@ -1230,7 +1294,17 @@ func parseRetryAfterHeader(headers http.Header, now time.Time) *time.Duration {
+ 	return nil
+ }
+ 
+-func openAICompatRetryAfter(status int, headers http.Header, body []byte, now time.Time) *time.Duration {
++func openAICompatRetryAfter(status int, headers http.Header, body []byte, now time.Time, baseURL string) *time.Duration {
++	// CTYun's OpenAI-compatible endpoint intermittently returns an empty-detail
++	// HTTP 500 for requests that succeed unchanged on a later attempt. Attach a
++	// bounded retry hint so the conductor can keep that transient response away
++	// from the downstream client while honoring request-retry as the hard cap.
++	// This is deliberately scoped to the CTYun endpoint: generic 500 errors
++	// may represent deterministic request bugs and must still fail immediately.
++	if isOpenAICompatCTYun500(status, baseURL) {
++		delay := openAICompatCTYun500FallbackRetryAfter
++		return &delay
++	}
+ 	if status != http.StatusTooManyRequests {
+ 		return nil
+ 	}
+diff --git a/internal/runtime/executor/openai_compat_executor_retry_test.go b/internal/runtime/executor/openai_compat_executor_retry_test.go
+index 48338ee..7172745 100644
+--- a/internal/runtime/executor/openai_compat_executor_retry_test.go
++++ b/internal/runtime/executor/openai_compat_executor_retry_test.go
+@@ -20,6 +20,7 @@ func TestOpenAICompatRetryAfter(t *testing.T) {
+ 		status  int
+ 		headers http.Header
+ 		body    string
++		baseURL string
+ 		want    *time.Duration
+ 	}{
+ 		{
+@@ -63,11 +64,36 @@ func TestOpenAICompatRetryAfter(t *testing.T) {
+ 			status:  http.StatusServiceUnavailable,
+ 			headers: http.Header{"Retry-After": {"30"}},
+ 		},
++		{
++			name:    "CTYun transient 500 gets bounded fallback",
++			status:  http.StatusInternalServerError,
++			baseURL: "https://eaichat.ctyun.cn/ai/platform/v2/cp",
++			body:    `{"timestamp":"2026-10-17T04:45:54Z","status":500,"error":"Internal Server Error","message":""}`,
++			want:    durationPointer(3 * time.Second),
++		},
++		{
++			name:    "unrelated 500 gets no invented retry",
++			status:  http.StatusInternalServerError,
++			baseURL: "https://example.com/v1",
++			body:    `{"status":500,"path":"/v1/chat/completions"}`,
++		},
++		{
++			name:    "CTYun path on a foreign domain gets no retry",
++			status:  http.StatusInternalServerError,
++			baseURL: "http://127.0.0.1:8080/ai/platform/v2/cp",
++			body:    `{"status":500,"path":"/ai/platform/v2/cp/chat/completions"}`,
++		},
++		{
++			name:    "CTYun deterministic 400 gets no retry",
++			status:  http.StatusBadRequest,
++			baseURL: "https://eaichat.ctyun.cn/ai/platform/v2/cp",
++			body:    `{"status":400,"path":"/ai/platform/v2/cp/chat/completions"}`,
++		},
+ 	}
+ 
+ 	for _, test := range tests {
+ 		t.Run(test.name, func(t *testing.T) {
+-			got := openAICompatRetryAfter(test.status, test.headers, []byte(test.body), now)
++			got := openAICompatRetryAfter(test.status, test.headers, []byte(test.body), now, test.baseURL)
+ 			if test.want == nil {
+ 				if got != nil {
+ 					t.Fatalf("retry-after = %v, want nil", *got)
+diff --git a/internal/thinking/apply.go b/internal/thinking/apply.go
+index 3f11d9d..619f800 100644
+--- a/internal/thinking/apply.go
++++ b/internal/thinking/apply.go
+@@ -483,12 +483,25 @@ func mapConfiguredHighIntent(level ThinkingLevel, modelInfo *registry.ModelInfo)
+ 		return level
+ 	}
+ 	level = ThinkingLevel(strings.ToLower(strings.TrimSpace(string(level))))
++	if mapped, ok := mapConfiguredCodexLevel(level, modelInfo); ok {
++		return mapped
++	}
+ 	var candidates []ThinkingLevel
+ 	switch level {
++	case LevelMedium:
++		// A three-level provider may expose low/high/max without medium. Prefer
++		// high for a requested medium so the fallback does not silently drop to
++		// the provider's standard tier on an equidistant clamp.
++		candidates = []ThinkingLevel{LevelMedium, LevelHigh, LevelLow}
+ 	case LevelXHigh:
+ 		candidates = []ThinkingLevel{LevelXHigh, LevelMax, LevelHigh}
+ 	case LevelMax:
+ 		candidates = []ThinkingLevel{LevelMax, LevelXHigh, LevelHigh}
++	case LevelUltra:
++		// Codex treats ultra as a client-side multi-agent alias and resolves it
++		// to a concrete model effort. Prefer max, then xhigh, then high when the
++		// model does not explicitly support ultra.
++		candidates = []ThinkingLevel{LevelUltra, LevelMax, LevelXHigh, LevelHigh}
+ 	default:
+ 		return level
+ 	}
+@@ -500,6 +513,21 @@ func mapConfiguredHighIntent(level ThinkingLevel, modelInfo *registry.ModelInfo)
+ 	return level
+ }
+ 
++func mapConfiguredCodexLevel(level ThinkingLevel, modelInfo *registry.ModelInfo) (ThinkingLevel, bool) {
++	if modelInfo == nil || modelInfo.Thinking == nil {
++		return "", false
++	}
++	for _, mapping := range modelInfo.Thinking.CodexLevelMap {
++		if strings.EqualFold(strings.TrimSpace(mapping.Codex), string(level)) {
++			mapped := ThinkingLevel(strings.ToLower(strings.TrimSpace(mapping.Level)))
++			if isLevelSupported(string(mapped), modelInfo.Thinking.Levels) {
++				return mapped, true
++			}
++		}
++	}
++	return "", false
++}
++
+ func extractSourceThinkingConfig(body []byte, provider string) ThinkingConfig {
+ 	provider = strings.ToLower(strings.TrimSpace(provider))
+ 	if provider == "openai-response" {
+@@ -1006,14 +1034,15 @@ func extractKimiConfig(body []byte) ThinkingConfig {
+ // extractCodexConfig extracts thinking configuration from Codex format request body.
+ //
+ // Codex API format (OpenAI Responses API):
+-//   - reasoning.effort: "none", "low", "medium", "high"
++//   - reasoning.effort: "none", "disabled", "low", "medium", "high", "xhigh",
++//     "max", "ultra"
+ //
+ // This is similar to OpenAI but uses nested field "reasoning.effort" instead of "reasoning_effort".
+ func extractCodexConfig(body []byte) ThinkingConfig {
+ 	// Check reasoning.effort (Codex / OpenAI Responses API format)
+ 	if effort := gjson.GetBytes(body, "reasoning.effort"); effort.Exists() {
+-		value := effort.String()
+-		if value == "none" {
++		value := strings.ToLower(strings.TrimSpace(effort.String()))
++		if value == "none" || value == "disabled" || value == "persistent" {
+ 			return ThinkingConfig{Mode: ModeNone, Budget: 0}
+ 		}
+ 		return ThinkingConfig{Mode: ModeLevel, Level: ThinkingLevel(value)}
+diff --git a/internal/thinking/codex_client_effort_aliases_test.go b/internal/thinking/codex_client_effort_aliases_test.go
+new file mode 100644
+index 0000000..b3806a5
+--- /dev/null
++++ b/internal/thinking/codex_client_effort_aliases_test.go
+@@ -0,0 +1,75 @@
++package thinking_test
++
++import (
++	"testing"
++
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
++	_ "github.com/router-for-me/CLIProxyAPI/v8/internal/thinking/provider/openai"
++	"github.com/tidwall/gjson"
++)
++
++func TestApplyThinkingNormalizesCodexClientEffortAliases(t *testing.T) {
++	modelInfo := &registry.ModelInfo{
++		ID:   "ctyun-model",
++		Type: "openai-compatibility",
++		Thinking: &registry.ThinkingSupport{
++			Levels:       []string{"low", "high", "max"},
++			DefaultLevel: "max",
++			CodexLevelMap: []registry.CodexLevelMapping{
++				{Codex: "xhigh", Level: "max"},
++				{Codex: "ultra", Level: "max"},
++			},
++		},
++	}
++
++	tests := []struct {
++		name   string
++		effort string
++		want   string
++	}{
++		{name: "low", effort: "low", want: "low"},
++		{name: "medium maps to advanced", effort: "medium", want: "high"},
++		{name: "high", effort: "high", want: "high"},
++		{name: "xhigh maps to maximum", effort: "xhigh", want: "max"},
++		{name: "ultra maps to maximum", effort: "ultra", want: "max"},
++		{name: "max stays maximum", effort: "max", want: "max"},
++		{name: "persistent maps to disabled then lowest level", effort: "persistent", want: "low"},
++		{name: "disabled maps to lowest level", effort: "disabled", want: "low"},
++	}
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			body := []byte(`{"model":"ctyun-model","messages":[{"role":"user","content":"hi"}],"reasoning_effort":"medium"}`)
++			source := []byte(`{"model":"ctyun-model","reasoning":{"effort":"` + tt.effort + `"},"input":"hi"}`)
++			out, err := thinking.ApplyThinkingWithModelInfo(
++				body, source, "ctyun-model", "openai-response", "openai", "openai-compatibility", modelInfo,
++			)
++			if err != nil {
++				t.Fatalf("ApplyThinkingWithModelInfo() error = %v; body=%s", err, out)
++			}
++			if got := gjson.GetBytes(out, "reasoning_effort").String(); got != tt.want {
++				t.Fatalf("reasoning_effort = %q, want %q; body=%s", got, tt.want, out)
++			}
++		})
++	}
++}
++
++func TestApplyThinkingNormalizesCodexClientEffortAliasesForSwitchOnlyModel(t *testing.T) {
++	modelInfo := &registry.ModelInfo{
++		ID:       "glm-model",
++		Type:     "openai-compatibility",
++		Thinking: &registry.ThinkingSupport{Levels: []string{"medium"}},
++	}
++	body := []byte(`{"model":"glm-model","messages":[{"role":"user","content":"hi"}],"reasoning_effort":"medium"}`)
++	source := []byte(`{"model":"glm-model","reasoning":{"effort":"ultra"},"input":"hi"}`)
++
++	out, err := thinking.ApplyThinkingWithModelInfo(
++		body, source, "glm-model", "openai-response", "openai", "openai-compatibility", modelInfo,
++	)
++	if err != nil {
++		t.Fatalf("ApplyThinkingWithModelInfo() error = %v; body=%s", err, out)
++	}
++	if got := gjson.GetBytes(out, "reasoning_effort").String(); got != "medium" {
++		t.Fatalf("reasoning_effort = %q, want medium; body=%s", got, out)
++	}
++}
+diff --git a/internal/thinking/configuration_update.go b/internal/thinking/configuration_update.go
+index a2e5f50..8065271 100644
+--- a/internal/thinking/configuration_update.go
++++ b/internal/thinking/configuration_update.go
+@@ -36,7 +36,7 @@ func extractConfigurationUpdateConfig(body []byte) ThinkingConfig {
+ 	switch effort {
+ 	case "":
+ 		return ThinkingConfig{}
+-	case "none":
++	case "none", "disabled", "persistent":
+ 		return ThinkingConfig{Mode: ModeNone, Budget: 0}
+ 	case "auto":
+ 		return ThinkingConfig{Mode: ModeAuto, Budget: -1}
+diff --git a/internal/thinking/convert.go b/internal/thinking/convert.go
+index dd049e8..132a9e5 100644
+--- a/internal/thinking/convert.go
++++ b/internal/thinking/convert.go
+@@ -19,6 +19,9 @@ var levelToBudgetMap = map[string]int{
+ 	// "max" is used by Claude adaptive thinking effort. We map it to a large budget
+ 	// and rely on per-model clamping when converting to budget-only providers.
+ 	"max": 128000,
++	// "ultra" is a Codex client alias. Give it the same large budget as max and
++	// let model-aware validation clamp it when the target supports less.
++	"ultra": 128000,
+ }
+ 
+ // ConvertLevelToBudget converts a thinking level to a budget value.
+@@ -35,6 +38,7 @@ var levelToBudgetMap = map[string]int{
+ //   - high    → 24576
+ //   - xhigh   → 32768
+ //   - max     → 128000
++//   - ultra   → 128000
+ //
+ // Returns:
+ //   - budget: The converted budget value
+diff --git a/internal/thinking/suffix.go b/internal/thinking/suffix.go
+index 5df8dec..3afba7e 100644
+--- a/internal/thinking/suffix.go
++++ b/internal/thinking/suffix.go
+@@ -115,7 +115,8 @@ func ParseSpecialSuffix(rawSuffix string) (mode ThinkingMode, ok bool) {
+ // ParseLevelSuffix attempts to parse a raw suffix as a discrete thinking level.
+ //
+ // This function parses the raw suffix content (from ParseSuffix.RawSuffix) as a level.
+-// Only discrete effort levels are valid: minimal, low, medium, high, xhigh, max.
++// Only discrete effort levels are valid: minimal, low, medium, high, xhigh,
++// max, ultra.
+ // Level matching is case-insensitive.
+ //
+ // Special values (none, auto) are NOT handled by this function; use ParseSpecialSuffix
+@@ -128,7 +129,7 @@ func ParseSpecialSuffix(rawSuffix string) (mode ThinkingMode, ok bool) {
+ //   - "none" -> level="", ok=false (special value, use ParseSpecialSuffix)
+ //   - "auto" -> level="", ok=false (special value, use ParseSpecialSuffix)
+ //   - "8192" -> level="", ok=false (numeric, use ParseNumericSuffix)
+-//   - "ultra" -> level="", ok=false (unknown level)
++//   - "ultra" -> level=LevelUltra, ok=true
+ func ParseLevelSuffix(rawSuffix string) (level ThinkingLevel, ok bool) {
+ 	if rawSuffix == "" {
+ 		return "", false
+@@ -148,6 +149,8 @@ func ParseLevelSuffix(rawSuffix string) (level ThinkingLevel, ok bool) {
+ 		return LevelXHigh, true
+ 	case "max":
+ 		return LevelMax, true
++	case "ultra":
++		return LevelUltra, true
+ 	default:
+ 		return "", false
+ 	}
+diff --git a/internal/thinking/types.go b/internal/thinking/types.go
+index b897d57..3eafa07 100644
+--- a/internal/thinking/types.go
++++ b/internal/thinking/types.go
+@@ -57,6 +57,10 @@ const (
+ 	// LevelMax sets maximum thinking effort.
+ 	// This is currently used by Claude 4.6 adaptive thinking (opus supports "max").
+ 	LevelMax ThinkingLevel = "max"
++	// LevelUltra is a Codex client effort alias. Codex resolves it against the
++	// model catalog before sending an ordinary inference request, but raw
++	// Responses clients may still send it directly.
++	LevelUltra ThinkingLevel = "ultra"
+ )
+ 
+ // ThinkingConfig represents a unified thinking configuration.
+diff --git a/internal/thinking/validate.go b/internal/thinking/validate.go
+index e68a1d2..b725d77 100644
+--- a/internal/thinking/validate.go
++++ b/internal/thinking/validate.go
+@@ -253,7 +253,7 @@ func convertAutoToMidRange(config ThinkingConfig, support *registry.ThinkingSupp
+ }
+ 
+ // standardLevelOrder defines the canonical ordering of thinking levels from lowest to highest.
+-var standardLevelOrder = []ThinkingLevel{LevelMinimal, LevelLow, LevelMedium, LevelHigh, LevelXHigh, LevelMax}
++var standardLevelOrder = []ThinkingLevel{LevelMinimal, LevelLow, LevelMedium, LevelHigh, LevelXHigh, LevelMax, LevelUltra}
+ 
+ // lowestSupportedLevel returns the lowest canonical effort level in supported,
+ // ignoring mode markers such as "none" and "auto".
+@@ -425,7 +425,7 @@ func isOpenAIFamily(provider string) bool {
+ 
+ func isKnownProviderFamily(provider string) bool {
+ 	switch provider {
+-	case "gemini", "antigravity", "claude", "openai", "openai-response", "codex", "kimi", "kimi-ai", "kimi.ai", "kimi.com", "xai", "interactions", "devin":
++	case "gemini", "antigravity", "claude", "openai", "openai-response", "codex", "kimi", "kimi-ai", "kimi.ai", "kimi.com", "xai", "interactions", "devin", "openai-compatibility":
+ 		return true
+ 	default:
+ 		return false
+diff --git a/internal/translator/openai/openai/responses/openai_openai-responses_response.go b/internal/translator/openai/openai/responses/openai_openai-responses_response.go
+index 18fe953..8ec0da2 100644
+--- a/internal/translator/openai/openai/responses/openai_openai-responses_response.go
++++ b/internal/translator/openai/openai/responses/openai_openai-responses_response.go
+@@ -896,7 +896,7 @@ func ConvertOpenAIChatCompletionsResponseToOpenAIResponses(ctx context.Context,
+ 		if hasActiveUnfinishedTool {
+ 			return out
+ 		}
+-		if len(st.MsgItemAdded) == 0 && len(st.FuncItemAdded) == 0 {
++		if len(st.MsgItemAdded) == 0 && len(st.FuncItemAdded) == 0 && (len(st.Reasonings) == 0 || st.FinishReason == "") {
+ 			return out
+ 		}
+ 		st.CompletedEmitted = true
+@@ -1246,7 +1246,7 @@ func ConvertOpenAIChatCompletionsResponseToOpenAIResponsesNonStream(_ context.Co
+ }
+ 
+ func (st *oaiToResponsesState) canFinalizeResponse() bool {
+-	if st.ToolInputError() != nil || st.FinishReason == "" || (len(st.MsgItemAdded) == 0 && len(st.FuncItemAdded) == 0) {
++	if st.ToolInputError() != nil || st.FinishReason == "" || (len(st.MsgItemAdded) == 0 && len(st.FuncItemAdded) == 0 && len(st.Reasonings) == 0) {
+ 		return false
+ 	}
+ 	for idx := range st.MsgItemAdded {
+diff --git a/internal/translator/openai/openai/responses/openai_openai-responses_response_test.go b/internal/translator/openai/openai/responses/openai_openai-responses_response_test.go
+index 7c1b538..d137ec3 100644
+--- a/internal/translator/openai/openai/responses/openai_openai-responses_response_test.go
++++ b/internal/translator/openai/openai/responses/openai_openai-responses_response_test.go
+@@ -1190,6 +1190,42 @@ func TestConvertOpenAIChatCompletionsResponseToOpenAIResponses_DoesNotCompleteRe
+ 	}
+ }
+ 
++func TestConvertOpenAIChatCompletionsResponseToOpenAIResponses_ReasoningOnlyLengthFinalizesAsIncomplete(t *testing.T) {
++	request := []byte(`{"model":"deepseek-v4.1-flash"}`)
++	chunks := []string{
++		`data: {"id":"resp_reasoning_only_length","object":"chat.completion.chunk","created":1773896263,"model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"still thinking"},"finish_reason":null}]}`,
++		`data: {"id":"resp_reasoning_only_length","object":"chat.completion.chunk","created":1773896263,"model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{},"finish_reason":"length"}]}`,
++		`data: [DONE]`,
++	}
++
++	var param any
++	reasoningDone := false
++	incompleteSeen := false
++	for _, line := range chunks {
++		for _, chunk := range ConvertOpenAIChatCompletionsResponseToOpenAIResponses(context.Background(), "deepseek-v4.1-flash", request, request, []byte(line), &param) {
++			event, data := parseOpenAIResponsesSSEEvent(t, chunk)
++			if event == "response.output_item.done" && data.Get("item.type").String() == "reasoning" {
++				reasoningDone = true
++			}
++			if event == "response.incomplete" {
++				incompleteSeen = true
++				if got := data.Get("response.status").String(); got != "incomplete" {
++					t.Fatalf("response.status = %q, want incomplete", got)
++				}
++				if got := data.Get("response.incomplete_details.reason").String(); got != "max_output_tokens" {
++					t.Fatalf("incomplete reason = %q, want max_output_tokens", got)
++				}
++			}
++		}
++	}
++	if !reasoningDone {
++		t.Fatal("reasoning output item was not finalized")
++	}
++	if !incompleteSeen {
++		t.Fatal("reasoning-only length stream did not emit response.incomplete")
++	}
++}
++
+ func TestConvertOpenAIChatCompletionsResponseToOpenAIResponses_IncompleteToolStreamDoesNotFinalizeAsCompleted(t *testing.T) {
+ 	request := []byte(`{"model":"gpt-5.6-terra"}`)
+ 
+diff --git a/sdk/api/handlers/openai/codex_client_models_test.go b/sdk/api/handlers/openai/codex_client_models_test.go
+index 364c407..fe143ac 100644
+--- a/sdk/api/handlers/openai/codex_client_models_test.go
++++ b/sdk/api/handlers/openai/codex_client_models_test.go
+@@ -388,3 +388,48 @@ func TestCodexClientModelsApplyPatchRouting(t *testing.T) {
+ 	assertPatch(t, withoutManager.codexClientModelsResponse("0.153.4"), "catalog-patch-synthetic", nil)
+ 
+ }
++func TestOpenAIModels_AlwaysIncludesCreatedTimestamp(t *testing.T) {
++	clientID := "openai-models-created-timestamp-test"
++	modelRegistry := registry.GetGlobalRegistry()
++	modelRegistry.RegisterClient(clientID, "openai", []*registry.ModelInfo{
++		{
++			ID: "test-model-without-created",
++		},
++		{
++			ID:      "test-model-with-created",
++			Created: 1700000000,
++		},
++	})
++	t.Cleanup(func() {
++		modelRegistry.UnregisterClient(clientID)
++	})
++
++	openaiModels := modelRegistry.GetAvailableModels("openai")
++	foundZero := false
++	foundCustom := false
++	for _, m := range openaiModels {
++		if m["id"] == "test-model-without-created" {
++			created, exists := m["created"]
++			if !exists {
++				t.Fatalf("expected created field on model %v", m)
++			}
++			if created != int64(0) && created != 0 {
++				t.Fatalf("created = %v, want 0", created)
++			}
++			foundZero = true
++		}
++		if m["id"] == "test-model-with-created" {
++			created, exists := m["created"]
++			if !exists {
++				t.Fatalf("expected created field on model %v", m)
++			}
++			if created != int64(1700000000) && created != 1700000000 {
++				t.Fatalf("created = %v, want 1700000000", created)
++			}
++			foundCustom = true
++		}
++	}
++	if !foundZero || !foundCustom {
++		t.Fatalf("did not find expected test models in registry: zero=%v custom=%v", foundZero, foundCustom)
++	}
++}
+diff --git a/sdk/api/handlers/openai/openai_handlers.go b/sdk/api/handlers/openai/openai_handlers.go
+index e0e7245..9ee072b 100644
+--- a/sdk/api/handlers/openai/openai_handlers.go
++++ b/sdk/api/handlers/openai/openai_handlers.go
+@@ -89,9 +89,11 @@ func (h *OpenAIAPIHandler) OpenAIModels(c *gin.Context) {
+ 			"object": model["object"],
+ 		}
+ 
+-		// Add created field if it exists
+-		if created, exists := model["created"]; exists {
++		// Add created field (required by OpenAI specification; fallback to 0 when omitted)
++		if created, exists := model["created"]; exists && created != nil {
+ 			filteredModel["created"] = created
++		} else {
++			filteredModel["created"] = int64(0)
+ 		}
+ 
+ 		// Add owned_by field if it exists
+diff --git a/sdk/cliproxy/auth/conductor_cooldown.go b/sdk/cliproxy/auth/conductor_cooldown.go
+index 04e95fd..4d217dc 100644
+--- a/sdk/cliproxy/auth/conductor_cooldown.go
++++ b/sdk/cliproxy/auth/conductor_cooldown.go
+@@ -2306,6 +2306,17 @@ func retryAfterFromError(err error) *time.Duration {
+ 	return &value
+ }
+ 
++func retryAfterBeforeCooldown(err error) bool {
++	if err == nil {
++		return false
++	}
++	type retryAfterPriorityProvider interface {
++		RetryAfterBeforeCooldown() bool
++	}
++	var provider retryAfterPriorityProvider
++	return errors.As(err, &provider) && provider != nil && provider.RetryAfterBeforeCooldown()
++}
++
+ // isTransientRateLimitError reports a transient per-model capacity/admission
+ // 429 whose quota is not exhausted. The classification travels through the
+ // shared executor contract, so only executors that explicitly vouch for the
+diff --git a/sdk/cliproxy/auth/conductor_selection.go b/sdk/cliproxy/auth/conductor_selection.go
+index bf1bbc5..5e14c4e 100644
+--- a/sdk/cliproxy/auth/conductor_selection.go
++++ b/sdk/cliproxy/auth/conductor_selection.go
+@@ -1500,6 +1500,17 @@ func (m *Manager) shouldRetryAfterErrorWithAttempted(ctx context.Context, opts c
+ 	if !isRequestRetryRoundError(err) || !m.retryAllowed(attempt, providers, model, eligibility, pinnedAuthID, defaultRequestRetry) {
+ 		return 0, false
+ 	}
++	// Some providers explicitly classify a retry hint as more authoritative
++	// than credential cooldown state. Honor that delay first so disabling
++	// cooldown does not turn a transient upstream failure into a tight loop.
++	if retryAfterBeforeCooldown(err) {
++		if retryAfter := retryAfterFromError(err); retryAfter != nil {
++			if *retryAfter < 0 || (*retryAfter > 0 && (maxWait <= 0 || *retryAfter > maxWait)) {
++				return 0, false
++			}
++			return *retryAfter, true
++		}
++	}
+ 	wait, found := m.closestCooldownWaitWithAttempted(providers, model, attempt, eligibility, pinnedAuthID, defaultRequestRetry, status, attempted)
+ 	if found {
+ 		if wait > 0 && (maxWait <= 0 || wait > maxWait) {
+diff --git a/sdk/cliproxy/auth/conductor_subsecond_cooldown_test.go b/sdk/cliproxy/auth/conductor_subsecond_cooldown_test.go
+index d942147..a395b4c 100644
+--- a/sdk/cliproxy/auth/conductor_subsecond_cooldown_test.go
++++ b/sdk/cliproxy/auth/conductor_subsecond_cooldown_test.go
+@@ -12,6 +12,46 @@ import (
+ 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
+ )
+ 
++type priorityRetryAfterStatusError struct {
++	status     int
++	retryAfter time.Duration
++}
++
++func (e *priorityRetryAfterStatusError) Error() string   { return "priority retry" }
++func (e *priorityRetryAfterStatusError) StatusCode() int { return e.status }
++func (e *priorityRetryAfterStatusError) RetryAfter() *time.Duration {
++	d := e.retryAfter
++	return &d
++}
++func (e *priorityRetryAfterStatusError) RetryAfterBeforeCooldown() bool { return true }
++
++func TestManager_ShouldRetryAfterError_PriorityRetryAfterBeatsImmediateCooldown(t *testing.T) {
++	manager := NewManager(nil, nil, nil)
++	model := "compat-priority-retry"
++	auth := &Auth{ID: "compat-priority-auth", Provider: "openai-compatibility"}
++
++	reg := registry.GetGlobalRegistry()
++	reg.RegisterClient(auth.ID, auth.Provider, []*registry.ModelInfo{{ID: model}})
++	t.Cleanup(func() { reg.UnregisterClient(auth.ID) })
++	if _, errRegister := manager.Register(WithSkipPersist(context.Background()), auth); errRegister != nil {
++		t.Fatalf("Register returned error: %v", errRegister)
++	}
++
++	want := 3 * time.Second
++	err500 := &priorityRetryAfterStatusError{status: http.StatusInternalServerError, retryAfter: want}
++	wait, shouldRetry := manager.shouldRetryAfterErrorWithAttempted(
++		context.Background(), cliproxyexecutor.Options{}, err500, 0,
++		[]string{"openai-compatibility"}, model, 5*time.Second, -1, 4,
++		map[string]struct{}{auth.ID: {}},
++	)
++	if !shouldRetry {
++		t.Fatal("expected priority retry hint to allow retry")
++	}
++	if wait != want {
++		t.Fatalf("wait = %v, want %v", wait, want)
++	}
++}
++
+ func TestMarkResult_429SubSecondRetryAfter_EnforcesMinimumCooldownFloor(t *testing.T) {
+ 	withQuotaCooldownEnabled(t)
+ 

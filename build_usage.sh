@@ -1,0 +1,16 @@
+#!/bin/bash
+
+ver="${1:-2.0.3}"
+dirRoot=`dirname "$(readlink -f "$0")"`
+
+work=`mktemp -d`
+[ -f "usage_v${ver}.tar.gz" ] || wget -qO "usage_v${ver}.tar.gz" "https://github.com/Willxup/cpa-usage-keeper/archive/refs/tags/v${ver}.tar.gz"
+tar -xf "usage_v${ver}.tar.gz" --strip-components=1 -C "${work}"
+cd "${work}"
+[ -f "${dirRoot}/usage-v${ver}.patch" ] && git apply "${dirRoot}/usage-v${ver}.patch"
+
+docker run --rm --entrypoint /bin/sh -v "${work}:/mnt" -w "/mnt/web" ocserv/jsdom -lc 'node -v && npm -v && npm ci && npm run build'
+
+CGO_ENABLED=0 go build -buildvcs=false  -ldflags="-s -w -X 'cpa-usage-keeper/internal/version.Version=${ver}'" -o usage ./cmd/server/main.go
+
+[ -f "./usage" ] && cp -rf "./usage" "${dirRoot}/usage"
