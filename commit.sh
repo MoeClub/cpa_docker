@@ -1,12 +1,13 @@
 #!/bin/sh
 
+arch="${1:-}"
 apk add --no-cache tzdata openssl
 cp -rf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
 mkdir -p /etc/nginx /var/lib/nginx
 
-[ -f /mnt/cpa ] && cp -rf /mnt/cpa /usr/local/bin/
-[ -f /mnt/usage ] && cp -rf /mnt/usage /usr/local/bin/
-[ -f /mnt/nginx ] && cp -rf /mnt/nginx /usr/local/bin/
+[ -f /mnt/${arch}/cpa ] && cp -rf /mnt/${arch}/cpa /usr/local/bin/
+[ -f /mnt/${arch}/usage ] && cp -rf /mnt/${arch}/usage /usr/local/bin/
+[ -f /mnt/${arch}/nginx ] && cp -rf /mnt/${arch}/nginx /usr/local/bin/
 [ -f /mnt/nginx.conf ] && cp -rf /mnt/nginx.conf /etc/nginx/
 
 [ -f /mnt/run.sh ] && cp -rf /mnt/run.sh /run.sh

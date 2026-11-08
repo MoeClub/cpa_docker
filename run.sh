@@ -23,7 +23,8 @@ sed -i \
   -e 's/^  secret-key:.*/  secret-key: ""/' \
   "${CONFIG}"
 
-MANAGEMENT_PASSWORD="${PASSWD}" /usr/local/bin/cpa --config "${CONFIG}" 2>&1 &
 CPA_MANAGEMENT_KEY="${PASSWD}" LOGIN_PASSWORD="${PASSWD}" WORK_DIR="/mnt/usage.d" APP_BASE_PATH="/usage" CPA_PUBLIC_URL="/management.html" APP_HOST="127.0.0.1" APP_PORT="8318" /usr/local/bin/usage 2>&1 &
 mkdir -p /var/lib/nginx/body /var/lib/nginx/fastcgi /var/lib/nginx/proxy /var/lib/nginx/scgi /var/lib/nginx/uwsgi
-[ -f /mnt/nginx.conf ] && exec /usr/local/bin/nginx -c /mnt/nginx.conf -g 'daemon off; master_process on;' ||  exec /usr/local/bin/nginx -g 'daemon off; master_process on;'
+[ -f /mnt/nginx.conf ] && /usr/local/bin/nginx -c /mnt/nginx.conf -g 'daemon on; master_process on;' ||  /usr/local/bin/nginx -g 'daemon on; master_process on;'
+export MANAGEMENT_PASSWORD="${PASSWD}"
+exec /usr/local/bin/cpa --config "${CONFIG}" 2>&1
