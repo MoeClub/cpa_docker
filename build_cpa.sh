@@ -9,6 +9,7 @@ tar -xf "/tmp/cpa_v${ver}.tar.gz" --strip-components=1 -C "${work}"
 cd "${work}"
 [ -f "${dirRoot}/cliproxyapi-v${ver}.patch" ] && git apply "${dirRoot}/cliproxyapi-v${ver}.patch"
 
-CGO_ENABLED=0 go build -buildvcs=false  -ldflags="-s -w -X 'main.Version=${ver}' -X 'main.Commit=$(echo ${ver} |md5sum |cut -b1-8)' -X 'main.BuildDate=$(date +%Y%m%d)'"  -o CLIProxyAPI ./cmd/server/
-
-[ -f "./CLIProxyAPI" ] && cp -rf "./CLIProxyAPI" "${dirRoot}/cpa"
+for arch in amd64 arm64; do
+  CGO_ENABLED=0 GOOS=linux GOARCH="${arch}" go build -buildvcs=false  -ldflags="-s -w -X 'main.Version=${ver}' -X 'main.Commit=$(echo ${ver} |md5sum |cut -b1-8)' -X 'main.BuildDate=$(date +%Y%m%d)'"  -o "CLIProxyAPI_${arch}" ./cmd/server/
+  [ -f "./CLIProxyAPI_${arch}" ] && mkdir -p "${dirRoot}/${arch}" && cp -rf "./CLIProxyAPI_${arch}" "${dirRoot}/${arch}/cpa"
+done
