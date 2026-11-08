@@ -11,6 +11,8 @@ cd "${work}"
 
 docker run --rm --entrypoint /bin/sh -v "${work}:/mnt" -w "/mnt/web" ocserv/jsdom -lc 'node -v && npm -v && npm ci && npm run build'
 
-CGO_ENABLED=0 go build -buildvcs=false  -ldflags="-s -w -X 'cpa-usage-keeper/internal/version.Version=${ver}'" -o usage ./cmd/server/main.go
+for arch in amd64 arm64; do
+  CGO_ENABLED=0 GOOS=linux GOARCH="${arch}" go build -buildvcs=false  -ldflags="-s -w -X 'cpa-usage-keeper/internal/version.Version=${ver}'" -o "usage_${arch}" ./cmd/server/main.go
+  [ -f "./usage_${arch}" ] && mkdir -p "${dirRoot}/${arch}" && cp -rf "./usage_${arch}" "${dirRoot}/${arch}/usage"
+done
 
-[ -f "./usage" ] && cp -rf "./usage" "${dirRoot}/usage"
