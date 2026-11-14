@@ -1,6 +1,6 @@
 #!/bin/bash
 
-ver="${1:-8.0.47}"
+ver="${1:-8.0.69}"
 dirRoot=`dirname "$(readlink -f "$0")"`
 
 work=`mktemp -d`
